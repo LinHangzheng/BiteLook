@@ -1,6 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Cookies from 'js-cookie';
 import { useMenuStore } from '@/store/menu-store';
 import { Dropzone } from '@/components/upload/dropzone';
 import { ImagePreview } from '@/components/upload/image-preview';
@@ -10,8 +12,31 @@ import { InviteCodeForm } from '@/components/auth/invite-code-form';
 export default function HomePage() {
   const router = useRouter();
   const { uploadedImage, isProcessing, progress, isValidated, logout } = useMenuStore();
+  const [hasCookie, setHasCookie] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
 
-  console.log('HomePage - isValidated:', isValidated);
+  // Double-check: verify both Zustand state AND cookie presence
+  useEffect(() => {
+    const cookieExists = !!Cookies.get('bitelook_invite_code');
+    setHasCookie(cookieExists);
+    setIsChecking(false);
+    console.log('HomePage - isValidated:', isValidated, 'hasCookie:', cookieExists);
+  }, [isValidated]);
+
+  // Show loading while checking
+  if (isChecking) {
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-orange-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4 animate-pulse">🔑</div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // Require BOTH validated state AND cookie to show main content
+  const showMainContent = isValidated && hasCookie;
 
   const handleProcess = () => {
     // Navigate immediately, processing happens on result page
@@ -31,8 +56,8 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Show invite code form if not validated */}
-        {!isValidated ? (
+        {/* Show invite code form if not validated OR no cookie */}
+        {!showMainContent ? (
           <InviteCodeForm />
         ) : (
           <>

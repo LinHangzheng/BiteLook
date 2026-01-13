@@ -51,7 +51,13 @@ export function InviteCodeForm() {
           // Stored code is no longer valid, remove it
           Cookies.remove(COOKIE_KEY);
         }
-        setError(data.error || 'Invalid invite code');
+
+        // Show specific error for system not configured
+        if (response.status === 503) {
+          setError('⚠️ System not configured. Please contact the administrator.');
+        } else {
+          setError(data.error || 'Invalid invite code');
+        }
         setIsCheckingStored(false);
       }
     } catch {
