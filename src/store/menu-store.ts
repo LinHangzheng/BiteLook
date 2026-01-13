@@ -95,9 +95,11 @@ export const useMenuStore = create<MenuState>((set) => ({
     }),
 
   logout: () => {
-    // Clear localStorage
+    // Clear cookie (uses dynamic import to avoid SSR issues)
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('bitelook_invite_code');
+      import('js-cookie').then((Cookies) => {
+        Cookies.default.remove('bitelook_invite_code');
+      });
     }
     set({
       inviteCode: null,

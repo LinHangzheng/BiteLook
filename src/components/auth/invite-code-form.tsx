@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Cookies from 'js-cookie';
 import { useMenuStore } from '@/store/menu-store';
 
-const STORAGE_KEY = 'bitelook_invite_code';
+const COOKIE_KEY = 'bitelook_invite_code';
 
 export function InviteCodeForm() {
   const [code, setCode] = useState('');
@@ -15,7 +16,7 @@ export function InviteCodeForm() {
 
   // Check for stored invite code on mount
   useEffect(() => {
-    const storedCode = localStorage.getItem(STORAGE_KEY);
+    const storedCode = Cookies.get(COOKIE_KEY);
     if (storedCode) {
       validateCode(storedCode, true);
     } else {
@@ -37,13 +38,17 @@ export function InviteCodeForm() {
       const data = await response.json();
 
       if (data.valid) {
-        localStorage.setItem(STORAGE_KEY, codeToValidate.toUpperCase());
+        // Store in cookie for 30 days, accessible across localhost and IP
+        Cookies.set(COOKIE_KEY, codeToValidate.toUpperCase(), {
+          expires: 30,
+          sameSite: 'lax'
+        });
         setInviteCode(codeToValidate.toUpperCase());
         setIsValidated(true);
       } else {
         if (isStoredCode) {
           // Stored code is no longer valid, remove it
-          localStorage.removeItem(STORAGE_KEY);
+          Cookies.remove(COOKIE_KEY);
         }
         setError(data.error || 'Invalid invite code');
         setIsCheckingStored(false);
