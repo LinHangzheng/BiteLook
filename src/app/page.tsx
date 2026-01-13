@@ -11,6 +11,8 @@ export default function HomePage() {
   const router = useRouter();
   const { uploadedImage, isProcessing, progress, isValidated, logout } = useMenuStore();
 
+  console.log('HomePage - isValidated:', isValidated);
+
   const handleProcess = () => {
     // Navigate immediately, processing happens on result page
     router.push('/result');

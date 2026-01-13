@@ -17,6 +17,7 @@ export function InviteCodeForm() {
   // Check for stored invite code on mount
   useEffect(() => {
     const storedCode = Cookies.get(COOKIE_KEY);
+    console.log('Checking for stored code:', storedCode ? 'Found' : 'Not found');
     if (storedCode) {
       validateCode(storedCode, true);
     } else {
