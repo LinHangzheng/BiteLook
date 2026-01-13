@@ -10,6 +10,7 @@ export async function extractTextFromImage(
 ): Promise<string> {
   try {
     console.log('Starting text extraction with Gemini...');
+    const startTime = Date.now();
 
     // Use Gemini to extract raw text only (no parsing)
     const response = await ai.models.generateContent({
@@ -46,8 +47,9 @@ Extract everything now:`,
     });
 
     const extractedText = response.text || '';
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    console.log(`\n========== TEXT EXTRACTION COMPLETE ==========`);
+    console.log(`\n========== TEXT EXTRACTION COMPLETE (${duration}s) ==========`);
     console.log(`Extracted ${extractedText.length} characters`);
     console.log(`Text preview (first 500 chars):`);
     console.log(extractedText.substring(0, 500));
@@ -55,7 +57,17 @@ Extract everything now:`,
 
     return extractedText;
   } catch (error) {
-    console.error('Text extraction failed:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ TEXT EXTRACTION FAILED:', errorMessage);
+    console.error('Full error:', error);
+
+    // Check for specific error types
+    if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+      console.error('⚠️  Rate limit hit during text extraction');
+    } else if (errorMessage.includes('timeout') || errorMessage.includes('DEADLINE_EXCEEDED')) {
+      console.error('⚠️  Request timeout during text extraction');
+    }
+
     return ''; // Return empty string if extraction fails, LLM will work without it
   }
 }

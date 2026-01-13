@@ -66,8 +66,16 @@ export async function parseMenuImage(
 ): Promise<ParsedMenu> {
   let lastError: Error | null = null;
 
-  // Step 1: Extract raw text using OCR
-  const ocrText = await extractTextFromImage(imageBase64, mimeType);
+  // Step 1: Extract raw text using OCR (with retry)
+  let ocrText = '';
+  try {
+    ocrText = await extractTextFromImage(imageBase64, mimeType);
+    if (!ocrText) {
+      console.warn('⚠️  Text extraction returned empty, will proceed with image-only parsing');
+    }
+  } catch (error) {
+    console.error('Text extraction error, will proceed with image-only parsing:', error);
+  }
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -184,13 +192,27 @@ Extract every dish with complete, accurate information, preserving the menu's or
       return parsedMenu;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const errorMsg = lastError.message;
+
+      console.error(`❌ Parsing attempt ${attempt + 1}/${maxRetries} failed:`, errorMsg);
 
       // Check if it's a rate limit error (429)
-      if (lastError.message.includes('429') || lastError.message.includes('RESOURCE_EXHAUSTED')) {
-        const waitTime = Math.pow(2, attempt) * 5000; // Exponential backoff: 5s, 10s, 20s
-        console.log(`Rate limited. Retrying in ${waitTime / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
-        await sleep(waitTime);
-        continue;
+      if (errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+        if (attempt < maxRetries - 1) {
+          const waitTime = Math.pow(2, attempt) * 5000; // Exponential backoff: 5s, 10s, 20s
+          console.log(`⚠️  Rate limited. Retrying in ${waitTime / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+          await sleep(waitTime);
+          continue;
+        }
+      }
+
+      // Check for timeout errors
+      if (errorMsg.includes('timeout') || errorMsg.includes('DEADLINE_EXCEEDED')) {
+        if (attempt < maxRetries - 1) {
+          console.log(`⚠️  Request timeout. Retrying... (attempt ${attempt + 1}/${maxRetries})`);
+          await sleep(3000);
+          continue;
+        }
       }
 
       // For other errors, throw immediately

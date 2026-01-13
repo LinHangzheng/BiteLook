@@ -158,16 +158,26 @@ export async function POST(request: NextRequest) {
 
         send({ type: 'complete' });
       } catch (error) {
-        console.error('Processing error:', error);
+        console.error('❌ API PROCESSING ERROR:', error);
         const errorMessage = error instanceof Error ? error.message : 'Processing failed';
 
         // Provide user-friendly error messages
         let userMessage = errorMessage;
+
         if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
           userMessage = 'API rate limit exceeded. Please wait a minute and try again, or check your Google AI billing settings.';
         } else if (errorMessage.includes('API_KEY_INVALID')) {
           userMessage = 'Invalid API key. Please check your GOOGLE_GENAI_API_KEY in .env.local';
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('DEADLINE_EXCEEDED')) {
+          userMessage = 'Request timed out. Your menu image might be too complex or large. Try a smaller image or fewer pages.';
+        } else if (errorMessage.includes('Failed to parse menu')) {
+          userMessage = 'Failed to understand menu structure. Please ensure the image is clear and text is readable.';
+        } else {
+          // Include error details for debugging
+          userMessage = `Processing failed: ${errorMessage}. Please try again or contact support if the issue persists.`;
         }
+
+        console.error('User-facing error message:', userMessage);
 
         send({
           type: 'error',

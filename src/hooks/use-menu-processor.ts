@@ -88,9 +88,24 @@ export function useMenuProcessor() {
         }
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Processing failed';
+
+      console.error('❌ MENU PROCESSING ERROR:', errorMessage);
+
+      // Provide user-friendly error messages
+      let userMessage = errorMessage;
+
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        userMessage = 'Network error. Please check your connection and try again.';
+      } else if (errorMessage.includes('timeout')) {
+        userMessage = 'Request timed out. The menu image might be too large. Try a smaller image or try again.';
+      } else if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+        userMessage = 'API rate limit reached. Please wait a minute and try again.';
+      }
+
       setProgress({
         stage: 'error',
-        message: error instanceof Error ? error.message : 'Processing failed',
+        message: userMessage,
       });
     } finally {
       setIsProcessing(false);
