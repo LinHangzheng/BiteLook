@@ -1,8 +1,18 @@
 import { NextRequest } from 'next/server';
 import { parseMenuImage } from '@/lib/google-ai/gemini-client';
 import { generateDishImage } from '@/lib/google-ai/imagen-client';
+import { validateInviteCode } from '@/lib/validate-invite';
 
 export async function POST(request: NextRequest) {
+  // Validate invite code first
+  const isValidated = await validateInviteCode();
+  if (!isValidated) {
+    return new Response(JSON.stringify({ error: 'Unauthorized - Invalid or missing invite code' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   const { imageBase64, mimeType } = await request.json();
 
   if (!imageBase64 || !mimeType) {

@@ -10,12 +10,23 @@ import { FormatSelector } from '@/components/upload/format-selector';
 
 export default function ResultPage() {
   const router = useRouter();
-  const { menuItems, progress, isProcessing, uploadedImage, reset } = useMenuStore();
+  const { menuItems, progress, isProcessing, uploadedImage, isValidated, reset } = useMenuStore();
   const { processMenu } = useMenuProcessor();
   const hasStartedProcessing = useRef(false);
 
+  // Redirect if not validated
+  useEffect(() => {
+    if (!isValidated) {
+      console.log('Not validated, redirecting to home');
+      router.push('/');
+      return;
+    }
+  }, [isValidated, router]);
+
   // Start processing when page loads
   useEffect(() => {
+    if (!isValidated) return; // Don't process if not validated
+
     if (uploadedImage && !hasStartedProcessing.current && !isProcessing && menuItems.length === 0) {
       hasStartedProcessing.current = true;
       processMenu();
@@ -23,7 +34,7 @@ export default function ResultPage() {
       // No image uploaded, redirect to home
       router.push('/');
     }
-  }, [uploadedImage, isProcessing, menuItems.length, processMenu, router]);
+  }, [uploadedImage, isProcessing, menuItems.length, processMenu, router, isValidated]);
 
   const progressPercent =
     progress?.totalItems && progress?.currentItem
