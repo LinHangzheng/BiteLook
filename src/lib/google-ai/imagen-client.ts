@@ -59,8 +59,15 @@ export async function generateDishImage(
       // Check if it's a rate limit error
       if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
         if (attempt < maxRetries - 1) {
-          const waitTime = Math.pow(2, attempt) * 10000; // 10s, 20s, 40s
-          console.log(`Rate limited. Waiting ${waitTime / 1000}s before retry...`);
+          // Exponential backoff with jitter to prevent thundering herd
+          const baseDelay = 5000; // Start with 5s instead of 10s
+          const jitter = Math.random() * 2000; // Add 0-2 seconds of randomization
+          const waitTime = Math.pow(2, attempt) * baseDelay + jitter;
+
+          console.log(
+            `Rate limited. Waiting ${(waitTime / 1000).toFixed(1)}s before retry ` +
+            `(attempt ${attempt + 1}/${maxRetries})...`
+          );
           await sleep(waitTime);
           continue;
         }

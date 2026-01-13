@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MenuItem, ParsedMenu, DisplayMode, ProcessingProgress } from '@/types/menu';
+import type { MenuItem, ParsedMenu, DisplayMode, ProcessingProgress, MenuImage } from '@/types/menu';
 
 interface MenuState {
   // Auth state
@@ -7,8 +7,8 @@ interface MenuState {
   isValidated: boolean;
 
   // Upload state
-  uploadedImage: string | null;
-  uploadedImageMimeType: string | null;
+  uploadedImages: MenuImage[];
+  maxImages: number;
 
   // Processing state
   isProcessing: boolean;
@@ -24,8 +24,9 @@ interface MenuState {
   // Actions
   setInviteCode: (code: string) => void;
   setIsValidated: (validated: boolean) => void;
-  setUploadedImage: (image: string, mimeType: string) => void;
-  clearUploadedImage: () => void;
+  addUploadedImage: (image: string, mimeType: string) => void;
+  removeUploadedImage: (id: string) => void;
+  clearUploadedImages: () => void;
   setDisplayMode: (mode: DisplayMode) => void;
   setParsedMenu: (menu: ParsedMenu) => void;
   updateItemImage: (index: number, imageBase64: string) => void;
@@ -38,8 +39,8 @@ interface MenuState {
 export const useMenuStore = create<MenuState>((set) => ({
   inviteCode: null,
   isValidated: false,
-  uploadedImage: null,
-  uploadedImageMimeType: null,
+  uploadedImages: [],
+  maxImages: 5,
   isProcessing: false,
   progress: null,
   parsedMenu: null,
@@ -50,16 +51,29 @@ export const useMenuStore = create<MenuState>((set) => ({
 
   setIsValidated: (validated) => set({ isValidated: validated }),
 
-  setUploadedImage: (image, mimeType) =>
-    set({
-      uploadedImage: image,
-      uploadedImageMimeType: mimeType,
+  addUploadedImage: (image, mimeType) =>
+    set((state) => {
+      const newImage: MenuImage = {
+        id: `image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        base64: image,
+        mimeType,
+        order: state.uploadedImages.length,
+      };
+      return {
+        uploadedImages: [...state.uploadedImages, newImage],
+      };
     }),
 
-  clearUploadedImage: () =>
+  removeUploadedImage: (id) =>
+    set((state) => ({
+      uploadedImages: state.uploadedImages
+        .filter((img) => img.id !== id)
+        .map((img, index) => ({ ...img, order: index })),
+    })),
+
+  clearUploadedImages: () =>
     set({
-      uploadedImage: null,
-      uploadedImageMimeType: null,
+      uploadedImages: [],
     }),
 
   setDisplayMode: (mode) => set({ displayMode: mode }),
@@ -86,8 +100,7 @@ export const useMenuStore = create<MenuState>((set) => ({
 
   reset: () =>
     set({
-      uploadedImage: null,
-      uploadedImageMimeType: null,
+      uploadedImages: [],
       isProcessing: false,
       progress: null,
       parsedMenu: null,
@@ -104,8 +117,7 @@ export const useMenuStore = create<MenuState>((set) => ({
     set({
       inviteCode: null,
       isValidated: false,
-      uploadedImage: null,
-      uploadedImageMimeType: null,
+      uploadedImages: [],
       isProcessing: false,
       progress: null,
       parsedMenu: null,

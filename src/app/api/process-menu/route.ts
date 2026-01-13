@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
-import { parseMenuImage } from '@/lib/google-ai/gemini-client';
+import { parseMenuImage, parseMultipleMenuImages } from '@/lib/google-ai/gemini-client';
 import { generateDishImage } from '@/lib/google-ai/imagen-client';
 import { validateInviteCode } from '@/lib/validate-invite';
+import { processConcurrently } from '@/lib/utils/concurrency-limiter';
+import type { MenuImage } from '@/types/menu';
 
 export async function POST(request: NextRequest) {
   // Validate invite code first
@@ -13,10 +15,38 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { imageBase64, mimeType } = await request.json();
+  const body = await request.json();
 
-  if (!imageBase64 || !mimeType) {
-    return new Response(JSON.stringify({ error: 'Missing image data' }), {
+  // Support both single and multi-image formats for backwards compatibility
+  let images: MenuImage[];
+
+  if (body.imageBase64 && body.mimeType) {
+    // Single image format (old format)
+    images = [{
+      id: 'single',
+      base64: body.imageBase64,
+      mimeType: body.mimeType,
+      order: 0,
+    }];
+  } else if (body.images && Array.isArray(body.images)) {
+    // Multiple images format (new format)
+    images = body.images;
+
+    // Validate
+    if (images.length === 0) {
+      return new Response(JSON.stringify({ error: 'No images provided' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (images.length > 5) {
+      return new Response(JSON.stringify({ error: 'Maximum 5 images allowed' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  } else {
+    return new Response(JSON.stringify({ error: 'Missing image data. Please provide either imageBase64 or images array.' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -31,21 +61,34 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        // Step 1: Parse menu
+        // Step 1: Extract text and parse menu (single or multiple images)
         send({
           type: 'progress',
           stage: 'parsing',
-          message: 'Analyzing your menu...',
+          currentImage: 1,
+          totalImages: images.length,
+          message: images.length > 1
+            ? `Extracting text from ${images.length} menu pages...`
+            : 'Extracting text from your menu...',
         });
 
-        const parsedMenu = await parseMenuImage(imageBase64, mimeType);
+        const parsedMenu = images.length > 1
+          ? await parseMultipleMenuImages(images)
+          : await parseMenuImage(images[0].base64, images[0].mimeType);
+
+        // DEBUG: Log parsed menu summary to server console
+        console.log(`\n========== MENU PARSING COMPLETE ==========`);
+        console.log(`Total dishes detected: ${parsedMenu.items.length}`);
+        console.log(`Language: ${parsedMenu.originalLanguage}`);
+        console.log(`Dishes: ${parsedMenu.items.map(item => item.name).join(', ')}`);
+        console.log(`===========================================\n`);
 
         send({
           type: 'parsed',
           data: parsedMenu,
         });
 
-        // Step 2: Generate images for each dish
+        // Step 2: Generate images for each dish (in parallel with concurrency limit)
         const totalItems = parsedMenu.items.length;
 
         send({
@@ -53,50 +96,59 @@ export async function POST(request: NextRequest) {
           stage: 'generating',
           currentItem: 0,
           totalItems,
-          message: `Generating images for ${totalItems} dishes...`,
+          message: `Generating images for ${totalItems} dishes (3 at a time)...`,
         });
 
-        for (let i = 0; i < totalItems; i++) {
-          const item = parsedMenu.items[i];
-          const dishName = item.translatedName || item.name;
+        await processConcurrently(
+          parsedMenu.items,
+          async (item, index) => {
+            const dishName = item.translatedName || item.name;
 
-          send({
-            type: 'progress',
-            stage: 'generating',
-            currentItem: i + 1,
-            totalItems,
-            message: `Creating image for "${dishName}"...`,
-          });
+            try {
+              const imageBase64Result = await generateDishImage(
+                dishName,
+                item.translatedDescription || item.description,
+                item.ingredients
+              );
 
-          try {
-            const imageBase64Result = await generateDishImage(
-              dishName,
-              item.translatedDescription || item.description,
-              item.ingredients
-            );
-
-            if (imageBase64Result) {
-              send({
-                type: 'image',
-                itemIndex: i,
-                imageBase64: imageBase64Result,
-              });
-            } else {
-              send({
-                type: 'image_error',
-                itemIndex: i,
-                error: 'Failed to generate image',
-              });
+              return imageBase64Result;
+            } catch (err) {
+              console.error(`Error generating image for ${dishName}:`, err);
+              throw err;
             }
-          } catch (err) {
-            console.error(`Error generating image for ${dishName}:`, err);
-            send({
-              type: 'image_error',
-              itemIndex: i,
-              error: 'Failed to generate image',
-            });
+          },
+          {
+            concurrency: 3, // Only 3 concurrent requests for optimal performance
+            onProgress: (completed, total, result) => {
+              // Send result to client
+              if (result.success && result.data) {
+                send({
+                  type: 'image',
+                  itemIndex: result.index,
+                  imageBase64: result.data,
+                });
+              } else {
+                send({
+                  type: 'image_error',
+                  itemIndex: result.index,
+                  error: result.error || 'Failed to generate image',
+                });
+              }
+
+              // Update overall progress
+              send({
+                type: 'progress',
+                stage: 'generating',
+                currentItem: completed,
+                totalItems: total,
+                message: `Generated ${completed} of ${total} images...`,
+              });
+            },
+            onError: (index, error) => {
+              console.error(`Image generation failed for index ${index}:`, error);
+            },
           }
-        }
+        );
 
         send({
           type: 'progress',

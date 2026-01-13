@@ -18,8 +18,22 @@ export interface ParsedMenu {
 
 export type DisplayMode = 'simple' | 'fancy';
 
+export interface MenuImage {
+  id: string;
+  base64: string;
+  mimeType: string;
+  order: number;
+}
+
+export interface MultiImageUpload {
+  images: MenuImage[];
+  totalImages: number;
+}
+
 export interface ProcessingProgress {
-  stage: 'uploading' | 'parsing' | 'generating' | 'complete' | 'error';
+  stage: 'uploading' | 'parsing' | 'combining' | 'generating' | 'complete' | 'error';
+  currentImage?: number;
+  totalImages?: number;
   currentItem?: number;
   totalItems?: number;
   message: string;

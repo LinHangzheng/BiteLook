@@ -11,7 +11,7 @@ import { InviteCodeForm } from '@/components/auth/invite-code-form';
 
 export default function HomePage() {
   const router = useRouter();
-  const { uploadedImage, isProcessing, progress, isValidated, logout } = useMenuStore();
+  const { uploadedImages, isProcessing, progress, isValidated, logout } = useMenuStore();
   const [hasCookie, setHasCookie] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
@@ -63,12 +63,10 @@ export default function HomePage() {
           <>
             {/* Main Content */}
             <div className="space-y-8">
-              {!uploadedImage ? (
-                <Dropzone />
-              ) : (
-                <>
-                  <ImagePreview />
+              <Dropzone />
 
+              {uploadedImages.length > 0 && (
+                <>
                   <div>
                     <h2 className="text-lg font-semibold text-gray-800 mb-3">
                       Choose display style

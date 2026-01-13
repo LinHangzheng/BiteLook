@@ -10,7 +10,7 @@ import { FormatSelector } from '@/components/upload/format-selector';
 
 export default function ResultPage() {
   const router = useRouter();
-  const { menuItems, progress, isProcessing, uploadedImage, isValidated, reset } = useMenuStore();
+  const { menuItems, progress, isProcessing, uploadedImages, isValidated, reset } = useMenuStore();
   const { processMenu } = useMenuProcessor();
   const hasStartedProcessing = useRef(false);
 
@@ -27,14 +27,14 @@ export default function ResultPage() {
   useEffect(() => {
     if (!isValidated) return; // Don't process if not validated
 
-    if (uploadedImage && !hasStartedProcessing.current && !isProcessing && menuItems.length === 0) {
+    if (uploadedImages.length > 0 && !hasStartedProcessing.current && !isProcessing && menuItems.length === 0) {
       hasStartedProcessing.current = true;
       processMenu();
-    } else if (!uploadedImage && menuItems.length === 0) {
+    } else if (uploadedImages.length === 0 && menuItems.length === 0) {
       // No image uploaded, redirect to home
       router.push('/');
     }
-  }, [uploadedImage, isProcessing, menuItems.length, processMenu, router, isValidated]);
+  }, [uploadedImages.length, isProcessing, menuItems.length, processMenu, router, isValidated]);
 
   const progressPercent =
     progress?.totalItems && progress?.currentItem
@@ -118,7 +118,7 @@ export default function ResultPage() {
         )}
 
         {/* Empty state - no image uploaded */}
-        {!isProcessing && menuItems.length === 0 && !uploadedImage && (
+        {!isProcessing && menuItems.length === 0 && uploadedImages.length === 0 && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">📋</div>
             <h2 className="text-xl font-semibold text-gray-700 mb-2">No menu processed yet</h2>

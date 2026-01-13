@@ -5,7 +5,9 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 export function useUpload() {
-  const setUploadedImage = useMenuStore((state) => state.setUploadedImage);
+  const addUploadedImage = useMenuStore((state) => state.addUploadedImage);
+  const uploadedImages = useMenuStore((state) => state.uploadedImages);
+  const maxImages = useMenuStore((state) => state.maxImages);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -22,15 +24,29 @@ export function useUpload() {
         reader.onload = () => {
           const result = reader.result as string;
           const base64 = result.split(',')[1];
-          setUploadedImage(base64, file.type);
+          addUploadedImage(base64, file.type);
           resolve();
         };
         reader.onerror = () => reject(new Error('Failed to read file'));
         reader.readAsDataURL(file);
       });
     },
-    [setUploadedImage]
+    [addUploadedImage]
   );
 
-  return { handleFile };
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      // Validate total count
+      if (uploadedImages.length + files.length > maxImages) {
+        throw new Error(`Maximum ${maxImages} images allowed. You currently have ${uploadedImages.length} image(s).`);
+      }
+
+      // Process all files in parallel
+      const promises = files.map((file) => handleFile(file));
+      await Promise.all(promises);
+    },
+    [uploadedImages.length, maxImages, handleFile]
+  );
+
+  return { handleFile, handleFiles };
 }
