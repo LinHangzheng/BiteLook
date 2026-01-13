@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import type { MenuItem, ParsedMenu, DisplayMode, ProcessingProgress } from '@/types/menu';
 
 interface MenuState {
+  // Auth state
+  inviteCode: string | null;
+  isValidated: boolean;
+
   // Upload state
   uploadedImage: string | null;
   uploadedImageMimeType: string | null;
@@ -18,6 +22,8 @@ interface MenuState {
   displayMode: DisplayMode;
 
   // Actions
+  setInviteCode: (code: string) => void;
+  setIsValidated: (validated: boolean) => void;
   setUploadedImage: (image: string, mimeType: string) => void;
   clearUploadedImage: () => void;
   setDisplayMode: (mode: DisplayMode) => void;
@@ -26,9 +32,12 @@ interface MenuState {
   setProgress: (progress: ProcessingProgress | null) => void;
   setIsProcessing: (isProcessing: boolean) => void;
   reset: () => void;
+  logout: () => void;
 }
 
 export const useMenuStore = create<MenuState>((set) => ({
+  inviteCode: null,
+  isValidated: false,
   uploadedImage: null,
   uploadedImageMimeType: null,
   isProcessing: false,
@@ -36,6 +45,10 @@ export const useMenuStore = create<MenuState>((set) => ({
   parsedMenu: null,
   menuItems: [],
   displayMode: 'simple',
+
+  setInviteCode: (code) => set({ inviteCode: code }),
+
+  setIsValidated: (validated) => set({ isValidated: validated }),
 
   setUploadedImage: (image, mimeType) =>
     set({
@@ -80,4 +93,21 @@ export const useMenuStore = create<MenuState>((set) => ({
       parsedMenu: null,
       menuItems: [],
     }),
+
+  logout: () => {
+    // Clear localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('bitelook_invite_code');
+    }
+    set({
+      inviteCode: null,
+      isValidated: false,
+      uploadedImage: null,
+      uploadedImageMimeType: null,
+      isProcessing: false,
+      progress: null,
+      parsedMenu: null,
+      menuItems: [],
+    });
+  },
 }));

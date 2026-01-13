@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Menu Visualizer - Transform Menus with AI",
+  title: "BiteLook - Transform Menus with AI",
   description: "Upload a restaurant menu photo and get AI-generated food images with translations and descriptions.",
 };
 
