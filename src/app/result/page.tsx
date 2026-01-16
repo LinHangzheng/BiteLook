@@ -112,7 +112,9 @@ export default function ResultPage() {
         {isProcessing && menuItems.length === 0 && (
           <div className="text-center py-20">
             <div className="text-6xl mb-4 animate-pulse">🍽️</div>
-            <h2 className="text-xl font-semibold text-gray-700 mb-2">Analyzing your menu...</h2>
+            <h2 className="text-xl font-semibold text-gray-700 mb-2">
+              {progress?.message || 'Analyzing your menu...'}
+            </h2>
             <p className="text-gray-500">This may take a few seconds</p>
           </div>
         )}

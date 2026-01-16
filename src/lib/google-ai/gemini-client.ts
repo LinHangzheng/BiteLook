@@ -59,22 +59,28 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type ProgressCallback = (message: string) => void;
+
 export async function parseMenuImage(
   imageBase64: string,
   mimeType: string,
-  maxRetries = 3
+  maxRetries = 3,
+  onProgress?: ProgressCallback
 ): Promise<ParsedMenu> {
   let lastError: Error | null = null;
 
   // Step 1: Extract raw text using OCR (with retry)
+  onProgress?.('Extracting text with OCR...');
   let ocrText = '';
   try {
     ocrText = await extractTextFromImage(imageBase64, mimeType);
     if (!ocrText) {
       console.warn('⚠️  Text extraction returned empty, will proceed with image-only parsing');
     }
+    onProgress?.('Analyzing menu structure...');
   } catch (error) {
     console.error('Text extraction error, will proceed with image-only parsing:', error);
+    onProgress?.('Analyzing menu with image...');
   }
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -225,7 +231,8 @@ Extract every dish with complete, accurate information, preserving the menu's or
 
 export async function parseMultipleMenuImages(
   images: MenuImage[],
-  maxRetries = 3
+  maxRetries = 3,
+  onProgress?: ProgressCallback
 ): Promise<ParsedMenu> {
   const parsedPages: ParsedMenu[] = [];
   let detectedLanguage: string | null = null;
@@ -235,8 +242,10 @@ export async function parseMultipleMenuImages(
     const image = images[i];
 
     // Step 1: Extract raw text using OCR for this page
+    onProgress?.(`Extracting text from page ${i + 1}/${images.length}...`);
     console.log(`Extracting text from page ${i + 1}/${images.length}...`);
     const ocrText = await extractTextFromImage(image.base64, image.mimeType);
+    onProgress?.(`Analyzing page ${i + 1}/${images.length}...`);
 
     // Build context info from previous pages
     const contextInfo = parsedPages.length > 0

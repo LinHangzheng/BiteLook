@@ -65,16 +65,21 @@ export async function POST(request: NextRequest) {
         send({
           type: 'progress',
           stage: 'parsing',
-          currentImage: 1,
-          totalImages: images.length,
-          message: images.length > 1
-            ? `Extracting text from ${images.length} menu pages...`
-            : 'Extracting text from your menu...',
+          message: 'Starting menu analysis...',
         });
 
+        // Progress callback to send real-time updates
+        const onParsingProgress = (message: string) => {
+          send({
+            type: 'progress',
+            stage: 'parsing',
+            message,
+          });
+        };
+
         const parsedMenu = images.length > 1
-          ? await parseMultipleMenuImages(images)
-          : await parseMenuImage(images[0].base64, images[0].mimeType);
+          ? await parseMultipleMenuImages(images, 3, onParsingProgress)
+          : await parseMenuImage(images[0].base64, images[0].mimeType, 3, onParsingProgress);
 
         // DEBUG: Log parsed menu summary to server console
         console.log(`\n========== MENU PARSING COMPLETE ==========`);
@@ -82,6 +87,12 @@ export async function POST(request: NextRequest) {
         console.log(`Language: ${parsedMenu.originalLanguage}`);
         console.log(`Dishes: ${parsedMenu.items.map(item => item.name).join(', ')}`);
         console.log(`===========================================\n`);
+
+        send({
+          type: 'progress',
+          stage: 'parsing',
+          message: `Found ${parsedMenu.items.length} dishes! Preparing to generate images...`,
+        });
 
         send({
           type: 'parsed',
