@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
     "@google/genai": "^1.35.0",
     "js-cookie": "^3.0.5",
     "next": "16.1.1",

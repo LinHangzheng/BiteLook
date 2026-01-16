@@ -1,7 +1,9 @@
-import { GoogleGenAI } from '@google/genai';
+import vision from '@google-cloud/vision';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GOOGLE_GENAI_API_KEY!,
+// Initialize Vision API client
+// Uses GOOGLE_CLOUD_API_KEY for authentication
+const visionClient = new vision.ImageAnnotatorClient({
+  apiKey: process.env.GOOGLE_CLOUD_API_KEY,
 });
 
 export async function extractTextFromImage(
@@ -9,44 +11,25 @@ export async function extractTextFromImage(
   mimeType: string
 ): Promise<string> {
   try {
-    console.log('Starting text extraction with Gemini...');
+    console.log('Starting text extraction with Google Cloud Vision OCR...');
     const startTime = Date.now();
 
-    // Use Gemini to extract raw text only (no parsing)
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [
-        {
-          inlineData: {
-            mimeType,
-            data: imageBase64,
-          },
-        },
-        {
-          text: `Extract ALL text from this menu image. Return ONLY the raw text exactly as it appears, preserving:
-- Exact spelling and capitalization
-- Line breaks and spacing (use \\n for new lines)
-- Numbers, prices, and special characters
-- Section headers and categories
-
-Output format: Plain text only, no JSON, no formatting, no interpretation. Just copy every single word you see from top to bottom, left to right.
-
-Example output:
-APPETIZERS
-Spring Rolls $8.99
-Fresh and crispy
-Chicken Wings $12.99
-
-MAIN COURSE
-Grilled Salmon $24.99
-...etc
-
-Extract everything now:`,
-        },
-      ],
+    // Use Google Cloud Vision API for accurate OCR
+    const [result] = await visionClient.textDetection({
+      image: {
+        content: imageBase64,
+      },
     });
 
-    const extractedText = response.text || '';
+    const detections = result.textAnnotations;
+
+    if (!detections || detections.length === 0) {
+      console.warn('⚠️  No text detected in image');
+      return '';
+    }
+
+    // First annotation contains the full text with preserved formatting
+    const extractedText = detections[0]?.description || '';
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log(`\n========== TEXT EXTRACTION COMPLETE (${duration}s) ==========`);
@@ -66,6 +49,8 @@ Extract everything now:`,
       console.error('⚠️  Rate limit hit during text extraction');
     } else if (errorMessage.includes('timeout') || errorMessage.includes('DEADLINE_EXCEEDED')) {
       console.error('⚠️  Request timeout during text extraction');
+    } else if (errorMessage.includes('API key') || errorMessage.includes('authentication')) {
+      console.error('⚠️  Authentication error - check GOOGLE_CLOUD_API_KEY');
     }
 
     return ''; // Return empty string if extraction fails, LLM will work without it
