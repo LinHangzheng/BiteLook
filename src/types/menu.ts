@@ -1,3 +1,5 @@
+export type ImageGenerationStatus = 'idle' | 'loading' | 'success' | 'error';
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -9,6 +11,7 @@ export interface MenuItem {
   translatedName?: string;
   translatedDescription?: string;
   generatedImageBase64?: string;
+  imageGenerationStatus?: ImageGenerationStatus;
 }
 
 export interface ParsedMenu {

@@ -5,6 +5,8 @@ import { validateInviteCode } from '@/lib/validate-invite';
 import { processConcurrently } from '@/lib/utils/concurrency-limiter';
 import type { MenuImage } from '@/types/menu';
 
+const IMAGE_GENERATION_THRESHOLD = 10;
+
 export async function POST(request: NextRequest) {
   // Validate invite code first
   const isValidated = await validateInviteCode();
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        // Step 1: Extract text and parse menu (single or multiple images)
+        // Step 1: Parse menu
         send({
           type: 'progress',
           stage: 'parsing',
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
         send({
           type: 'progress',
           stage: 'parsing',
-          message: `Found ${parsedMenu.items.length} dishes! Preparing to generate images...`,
+          message: `Found ${parsedMenu.items.length} dishes!`,
         });
 
         send({
@@ -99,67 +101,74 @@ export async function POST(request: NextRequest) {
           data: parsedMenu,
         });
 
-        // Step 2: Generate images for each dish (in parallel with concurrency limit)
+        // Step 2: Auto-generate images only if <= threshold dishes
         const totalItems = parsedMenu.items.length;
 
-        send({
-          type: 'progress',
-          stage: 'generating',
-          currentItem: 0,
-          totalItems,
-          message: `Generating images for ${totalItems} dishes (3 at a time)...`,
-        });
+        if (totalItems <= IMAGE_GENERATION_THRESHOLD) {
+          send({
+            type: 'progress',
+            stage: 'generating',
+            currentItem: 0,
+            totalItems,
+            message: `Generating images for ${totalItems} dishes...`,
+          });
 
-        await processConcurrently(
-          parsedMenu.items,
-          async (item, index) => {
-            const dishName = item.translatedName || item.name;
+          await processConcurrently(
+            parsedMenu.items,
+            async (item) => {
+              const dishName = item.translatedName || item.name;
 
-            try {
-              const imageBase64Result = await generateDishImage(
-                dishName,
-                item.translatedDescription || item.description,
-                item.ingredients
-              );
+              try {
+                const imageBase64Result = await generateDishImage(
+                  dishName,
+                  item.translatedDescription || item.description,
+                  item.ingredients
+                );
 
-              return imageBase64Result;
-            } catch (err) {
-              console.error(`Error generating image for ${dishName}:`, err);
-              throw err;
-            }
-          },
-          {
-            concurrency: 3, // Only 3 concurrent requests for optimal performance
-            onProgress: (completed, total, result) => {
-              // Send result to client
-              if (result.success && result.data) {
-                send({
-                  type: 'image',
-                  itemIndex: result.index,
-                  imageBase64: result.data,
-                });
-              } else {
-                send({
-                  type: 'image_error',
-                  itemIndex: result.index,
-                  error: result.error || 'Failed to generate image',
-                });
+                return imageBase64Result;
+              } catch (err) {
+                console.error(`Error generating image for ${dishName}:`, err);
+                throw err;
               }
+            },
+            {
+              concurrency: 3,
+              onProgress: (completed, total, result) => {
+                if (result.success && result.data) {
+                  send({
+                    type: 'image',
+                    itemIndex: result.index,
+                    imageBase64: result.data,
+                  });
+                } else {
+                  send({
+                    type: 'image_error',
+                    itemIndex: result.index,
+                    error: result.error || 'Failed to generate image',
+                  });
+                }
 
-              // Update overall progress
-              send({
-                type: 'progress',
-                stage: 'generating',
-                currentItem: completed,
-                totalItems: total,
-                message: `Generated ${completed} of ${total} images...`,
-              });
-            },
-            onError: (index, error) => {
-              console.error(`Image generation failed for index ${index}:`, error);
-            },
-          }
-        );
+                send({
+                  type: 'progress',
+                  stage: 'generating',
+                  currentItem: completed,
+                  totalItems: total,
+                  message: `Generated ${completed} of ${total} images...`,
+                });
+              },
+              onError: (index, error) => {
+                console.error(`Image generation failed for index ${index}:`, error);
+              },
+            }
+          );
+        } else {
+          // More than threshold: skip auto-generation, user will generate on-demand
+          send({
+            type: 'progress',
+            stage: 'complete',
+            message: `Menu parsed with ${totalItems} dishes. Generate images on-demand by clicking on individual dishes.`,
+          });
+        }
 
         send({
           type: 'progress',
@@ -169,7 +178,7 @@ export async function POST(request: NextRequest) {
 
         send({ type: 'complete' });
       } catch (error) {
-        console.error('❌ API PROCESSING ERROR:', error);
+        console.error('API PROCESSING ERROR:', error);
         const errorMessage = error instanceof Error ? error.message : 'Processing failed';
 
         // Provide user-friendly error messages
@@ -184,7 +193,6 @@ export async function POST(request: NextRequest) {
         } else if (errorMessage.includes('Failed to parse menu')) {
           userMessage = 'Failed to understand menu structure. Please ensure the image is clear and text is readable.';
         } else {
-          // Include error details for debugging
           userMessage = `Processing failed: ${errorMessage}. Please try again or contact support if the issue persists.`;
         }
 

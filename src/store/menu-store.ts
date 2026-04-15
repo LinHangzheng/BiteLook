@@ -18,6 +18,10 @@ interface MenuState {
   parsedMenu: ParsedMenu | null;
   menuItems: MenuItem[];
 
+  // Image generation tracking
+  imageGenerationCount: number;
+  imageGenerationLimit: number;
+
   // Display preferences
   displayMode: DisplayMode;
 
@@ -30,13 +34,14 @@ interface MenuState {
   setDisplayMode: (mode: DisplayMode) => void;
   setParsedMenu: (menu: ParsedMenu) => void;
   updateItemImage: (index: number, imageBase64: string) => void;
+  generateImageForItem: (index: number) => Promise<void>;
   setProgress: (progress: ProcessingProgress | null) => void;
   setIsProcessing: (isProcessing: boolean) => void;
   reset: () => void;
   logout: () => void;
 }
 
-export const useMenuStore = create<MenuState>((set) => ({
+export const useMenuStore = create<MenuState>((set, get) => ({
   inviteCode: null,
   isValidated: false,
   uploadedImages: [],
@@ -45,6 +50,8 @@ export const useMenuStore = create<MenuState>((set) => ({
   progress: null,
   parsedMenu: null,
   menuItems: [],
+  imageGenerationCount: 0,
+  imageGenerationLimit: 10,
   displayMode: 'simple',
 
   setInviteCode: (code) => set({ inviteCode: code }),
@@ -84,15 +91,80 @@ export const useMenuStore = create<MenuState>((set) => ({
       menuItems: menu.items.map((item, i) => ({
         ...item,
         id: `dish-${i}`,
+        imageGenerationStatus: 'idle' as const,
       })),
     }),
 
   updateItemImage: (index, imageBase64) =>
     set((state) => ({
       menuItems: state.menuItems.map((item, i) =>
-        i === index ? { ...item, generatedImageBase64: imageBase64 } : item
+        i === index
+          ? { ...item, generatedImageBase64: imageBase64, imageGenerationStatus: 'success' as const }
+          : item
       ),
+      imageGenerationCount: state.imageGenerationCount + 1,
     })),
+
+  generateImageForItem: async (index: number) => {
+    const state = get();
+
+    if (state.imageGenerationCount >= state.imageGenerationLimit) {
+      return;
+    }
+
+    const item = state.menuItems[index];
+    if (!item || item.generatedImageBase64 || item.imageGenerationStatus === 'loading') {
+      return;
+    }
+
+    // Set loading state
+    set((s) => ({
+      menuItems: s.menuItems.map((it, i) =>
+        i === index ? { ...it, imageGenerationStatus: 'loading' as const } : it
+      ),
+    }));
+
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dishName: item.translatedName || item.name,
+          description: item.translatedDescription || item.description,
+          ingredients: item.ingredients,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate image');
+      }
+
+      const data = await response.json();
+
+      if (data.imageBase64) {
+        set((s) => ({
+          menuItems: s.menuItems.map((it, i) =>
+            i === index
+              ? { ...it, generatedImageBase64: data.imageBase64, imageGenerationStatus: 'success' as const }
+              : it
+          ),
+          imageGenerationCount: s.imageGenerationCount + 1,
+        }));
+      } else {
+        set((s) => ({
+          menuItems: s.menuItems.map((it, i) =>
+            i === index ? { ...it, imageGenerationStatus: 'error' as const } : it
+          ),
+        }));
+      }
+    } catch {
+      set((s) => ({
+        menuItems: s.menuItems.map((it, i) =>
+          i === index ? { ...it, imageGenerationStatus: 'error' as const } : it
+        ),
+      }));
+    }
+  },
 
   setProgress: (progress) => set({ progress }),
 
@@ -105,6 +177,7 @@ export const useMenuStore = create<MenuState>((set) => ({
       progress: null,
       parsedMenu: null,
       menuItems: [],
+      imageGenerationCount: 0,
     }),
 
   logout: () => {
@@ -122,6 +195,7 @@ export const useMenuStore = create<MenuState>((set) => ({
       progress: null,
       parsedMenu: null,
       menuItems: [],
+      imageGenerationCount: 0,
     });
   },
 }));
