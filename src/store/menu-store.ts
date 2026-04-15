@@ -19,6 +19,10 @@ interface MenuState {
   parsedMenu: ParsedMenu | null;
   menuItems: MenuItem[];
 
+  // Image generation tracking
+  imageGenerationCount: number;
+  imageGenerationLimit: number;
+
   // Display preferences
   displayMode: DisplayMode;
 
@@ -37,6 +41,7 @@ interface MenuState {
   setDisplayMode: (mode: DisplayMode) => void;
   setParsedMenu: (menu: ParsedMenu) => void;
   updateItemImage: (index: number, imageBase64: string) => void;
+  generateImageForItem: (index: number) => Promise<void>;
   setProgress: (progress: ProcessingProgress | null) => void;
   setIsProcessing: (isProcessing: boolean) => void;
   setJobId: (id: string | null) => void;
@@ -53,7 +58,7 @@ interface MenuState {
   clearCart: () => void;
 }
 
-export const useMenuStore = create<MenuState>((set) => ({
+export const useMenuStore = create<MenuState>((set, get) => ({
   inviteCode: null,
   isValidated: false,
   uploadedImages: [],
@@ -63,6 +68,8 @@ export const useMenuStore = create<MenuState>((set) => ({
   jobId: null,
   parsedMenu: null,
   menuItems: [],
+  imageGenerationCount: 0,
+  imageGenerationLimit: 10,
   displayMode: 'simple',
   selectedCategory: null,
   cart: [],
@@ -104,22 +111,85 @@ export const useMenuStore = create<MenuState>((set) => ({
       menuItems: menu.items.map((item, i) => ({
         ...item,
         id: `dish-${i}`,
+        imageGenerationStatus: 'idle' as const,
       })),
     }),
 
   updateItemImage: (index, imageBase64) =>
     set((state) => ({
       menuItems: state.menuItems.map((item, i) =>
-        i === index ? { ...item, generatedImageBase64: imageBase64 } : item
+        i === index
+          ? { ...item, generatedImageBase64: imageBase64, imageGenerationStatus: 'success' as const }
+          : item
       ),
+      imageGenerationCount: state.imageGenerationCount + 1,
     })),
+
+  generateImageForItem: async (index: number) => {
+    const state = get();
+
+    if (state.imageGenerationCount >= state.imageGenerationLimit) {
+      return;
+    }
+
+    const item = state.menuItems[index];
+    if (!item || item.generatedImageBase64 || item.imageGenerationStatus === 'loading') {
+      return;
+    }
+
+    set((s) => ({
+      menuItems: s.menuItems.map((it, i) =>
+        i === index ? { ...it, imageGenerationStatus: 'loading' as const } : it
+      ),
+    }));
+
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dishName: item.translatedName || item.name,
+          description: item.translatedDescription || item.description,
+          ingredients: item.ingredients,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate image');
+      }
+
+      const data = await response.json();
+
+      if (data.imageBase64) {
+        set((s) => ({
+          menuItems: s.menuItems.map((it, i) =>
+            i === index
+              ? { ...it, generatedImageBase64: data.imageBase64, imageGenerationStatus: 'success' as const }
+              : it
+          ),
+          imageGenerationCount: s.imageGenerationCount + 1,
+        }));
+      } else {
+        set((s) => ({
+          menuItems: s.menuItems.map((it, i) =>
+            i === index ? { ...it, imageGenerationStatus: 'error' as const } : it
+          ),
+        }));
+      }
+    } catch {
+      set((s) => ({
+        menuItems: s.menuItems.map((it, i) =>
+          i === index ? { ...it, imageGenerationStatus: 'error' as const } : it
+        ),
+      }));
+    }
+  },
 
   setProgress: (progress) => set({ progress }),
 
   setIsProcessing: (isProcessing) => set({ isProcessing }),
 
   setJobId: (id) => {
-    // Also update localStorage for recovery
     if (typeof window !== 'undefined') {
       if (id) {
         localStorage.setItem('bitelook_current_job_id', id);
@@ -141,13 +211,13 @@ export const useMenuStore = create<MenuState>((set) => ({
       jobId: null,
       parsedMenu: null,
       menuItems: [],
+      imageGenerationCount: 0,
       selectedCategory: null,
       cart: [],
     });
   },
 
   logout: () => {
-    // Clear cookie and localStorage (uses dynamic import to avoid SSR issues)
     if (typeof window !== 'undefined') {
       localStorage.removeItem('bitelook_current_job_id');
       import('js-cookie').then((Cookies) => {
@@ -163,6 +233,7 @@ export const useMenuStore = create<MenuState>((set) => ({
       jobId: null,
       parsedMenu: null,
       menuItems: [],
+      imageGenerationCount: 0,
       selectedCategory: null,
       cart: [],
     });
@@ -213,17 +284,14 @@ export const useMenuStore = create<MenuState>((set) => ({
 
 // ===== Selectors =====
 
-// Parse price string and extract numeric value
 export function parsePrice(priceStr: string | undefined): number | null {
   if (!priceStr) return null;
-  // Match first number in string (handles "$10.99", "10-15", "10.50", etc.)
   const match = priceStr.match(/[\d.]+/);
   if (!match) return null;
   const num = parseFloat(match[0]);
   return isNaN(num) ? null : num;
 }
 
-// Get unique categories from menu items
 export function useCategories(): string[] {
   const menuItems = useMenuStore((state) => state.menuItems);
   const categories = new Set<string>();
@@ -235,7 +303,6 @@ export function useCategories(): string[] {
   return Array.from(categories).sort();
 }
 
-// Get filtered menu items based on selected category
 export function useFilteredMenuItems(): MenuItem[] {
   const menuItems = useMenuStore((state) => state.menuItems);
   const selectedCategory = useMenuStore((state) => state.selectedCategory);
@@ -247,13 +314,11 @@ export function useFilteredMenuItems(): MenuItem[] {
   return menuItems.filter((item) => item.category === selectedCategory);
 }
 
-// Get cart item count
 export function useCartItemCount(): number {
   const cart = useMenuStore((state) => state.cart);
   return cart.reduce((total, item) => total + item.quantity, 0);
 }
 
-// Get cart total price
 export function useCartTotal(): { total: number; hasUnpricedItems: boolean } {
   const cart = useMenuStore((state) => state.cart);
   const menuItems = useMenuStore((state) => state.menuItems);
@@ -276,7 +341,6 @@ export function useCartTotal(): { total: number; hasUnpricedItems: boolean } {
   return { total, hasUnpricedItems };
 }
 
-// Get quantity of a specific item in cart
 export function useCartItemQuantity(menuItemId: string): number {
   const cart = useMenuStore((state) => state.cart);
   const item = cart.find((i) => i.menuItemId === menuItemId);

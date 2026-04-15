@@ -9,14 +9,12 @@ import type { MenuImage, ProcessingProgress } from '@/types/menu';
 import type { JobData, GeneratedImageData } from '@/types/job';
 import { JOB_TTL_SECONDS } from '@/types/job';
 
-// CORS headers for Capacitor native app requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Invite-Code',
 };
 
-// Handle CORS preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
@@ -59,8 +57,9 @@ async function storeGeneratedImage(
   }
 }
 
+const IMAGE_GENERATION_THRESHOLD = 10;
+
 export async function POST(request: NextRequest) {
-  // Validate invite code first
   const isValidated = await validateInviteCode();
   if (!isValidated) {
     return new Response(JSON.stringify({ error: 'Unauthorized - Invalid or missing invite code' }), {
@@ -71,11 +70,9 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
-  // Support both single and multi-image formats for backwards compatibility
   let images: MenuImage[];
 
   if (body.imageBase64 && body.mimeType) {
-    // Single image format (old format)
     images = [{
       id: 'single',
       base64: body.imageBase64,
@@ -83,10 +80,8 @@ export async function POST(request: NextRequest) {
       order: 0,
     }];
   } else if (body.images && Array.isArray(body.images)) {
-    // Multiple images format (new format)
     images = body.images;
 
-    // Validate
     if (images.length === 0) {
       return new Response(JSON.stringify({ error: 'No images provided' }), {
         status: 400,
@@ -106,13 +101,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Generate unique job ID
   const jobId = nanoid(12);
-
-  // Get invite code for job association (from cookie or header)
   const inviteCode = await getInviteCode() || '';
 
-  // Initialize job in KV
   const initialProgress: ProcessingProgress = {
     stage: 'uploading',
     message: 'Starting...',
@@ -134,7 +125,6 @@ export async function POST(request: NextRequest) {
     await kv.set(`job:${jobId}`, initialJob, { ex: JOB_TTL_SECONDS });
   } catch (error) {
     console.error('Failed to create job in KV:', error);
-    // Continue without job persistence - still works for connected clients
   }
 
   const encoder = new TextEncoder();
@@ -145,11 +135,9 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
       };
 
-      // Send job ID immediately so client can poll if disconnected
       send({ type: 'job_created', jobId });
 
       try {
-        // Update status to parsing
         await updateJobState(jobId, {
           status: 'parsing',
           progress: { stage: 'parsing', message: 'Starting menu analysis...' },
@@ -161,7 +149,6 @@ export async function POST(request: NextRequest) {
           message: 'Starting menu analysis...',
         });
 
-        // Progress callback to send real-time updates
         const onParsingProgress = async (message: string) => {
           await updateJobState(jobId, {
             progress: { stage: 'parsing', message },
@@ -177,20 +164,17 @@ export async function POST(request: NextRequest) {
           ? await parseMultipleMenuImages(images, 3, onParsingProgress)
           : await parseMenuImage(images[0].base64, images[0].mimeType, 3, onParsingProgress);
 
-        // DEBUG: Log parsed menu summary to server console
         console.log(`\n========== MENU PARSING COMPLETE ==========`);
         console.log(`Total dishes detected: ${parsedMenu.items.length}`);
         console.log(`Language: ${parsedMenu.originalLanguage}`);
         console.log(`Dishes: ${parsedMenu.items.map(item => item.name).join(', ')}`);
         console.log(`===========================================\n`);
 
-        // Build menu items from parsed menu
         const menuItems = parsedMenu.items.map((item, i) => ({
           ...item,
           id: `dish-${i}`,
         }));
 
-        // Update job with parsed menu
         await updateJobState(jobId, {
           status: 'generating',
           parsedMenu,
@@ -204,7 +188,7 @@ export async function POST(request: NextRequest) {
         send({
           type: 'progress',
           stage: 'parsing',
-          message: `Found ${parsedMenu.items.length} dishes! Preparing to generate images...`,
+          message: `Found ${parsedMenu.items.length} dishes!`,
         });
 
         send({
@@ -212,96 +196,98 @@ export async function POST(request: NextRequest) {
           data: parsedMenu,
         });
 
-        // Step 2: Generate images for each dish (in parallel with concurrency limit)
         const totalItems = parsedMenu.items.length;
 
-        await updateJobState(jobId, {
-          progress: {
+        if (totalItems <= IMAGE_GENERATION_THRESHOLD) {
+          await updateJobState(jobId, {
+            progress: {
+              stage: 'generating',
+              currentItem: 0,
+              totalItems,
+              message: `Generating images for ${totalItems} dishes (3 at a time)...`,
+            },
+          });
+
+          send({
+            type: 'progress',
             stage: 'generating',
             currentItem: 0,
             totalItems,
             message: `Generating images for ${totalItems} dishes (3 at a time)...`,
-          },
-        });
+          });
 
-        send({
-          type: 'progress',
-          stage: 'generating',
-          currentItem: 0,
-          totalItems,
-          message: `Generating images for ${totalItems} dishes (3 at a time)...`,
-        });
+          await processConcurrently(
+            parsedMenu.items,
+            async (item) => {
+              const dishName = item.translatedName || item.name;
 
-        await processConcurrently(
-          parsedMenu.items,
-          async (item) => {
-            const dishName = item.translatedName || item.name;
+              try {
+                const imageBase64Result = await generateDishImage(
+                  dishName,
+                  item.translatedDescription || item.description,
+                  item.ingredients
+                );
 
-            try {
-              const imageBase64Result = await generateDishImage(
-                dishName,
-                item.translatedDescription || item.description,
-                item.ingredients
-              );
+                return imageBase64Result;
+              } catch (err) {
+                console.error(`Error generating image for ${dishName}:`, err);
+                throw err;
+              }
+            },
+            {
+              concurrency: 3,
+              onProgress: async (completed, total, result) => {
+                await storeGeneratedImage(
+                  jobId,
+                  result.index,
+                  result.success ? result.data || null : null,
+                  result.success ? undefined : result.error
+                );
 
-              return imageBase64Result;
-            } catch (err) {
-              console.error(`Error generating image for ${dishName}:`, err);
-              throw err;
-            }
-          },
-          {
-            concurrency: 3, // Only 3 concurrent requests for optimal performance
-            onProgress: async (completed, total, result) => {
-              // Store image in KV
-              await storeGeneratedImage(
-                jobId,
-                result.index,
-                result.success ? result.data || null : null,
-                result.success ? undefined : result.error
-              );
+                await updateJobState(jobId, {
+                  progress: {
+                    stage: 'generating',
+                    currentItem: completed,
+                    totalItems: total,
+                    message: `Generated ${completed} of ${total} images...`,
+                  },
+                });
 
-              // Update job progress
-              await updateJobState(jobId, {
-                progress: {
+                if (result.success && result.data) {
+                  send({
+                    type: 'image',
+                    itemIndex: result.index,
+                    imageBase64: result.data,
+                  });
+                } else {
+                  send({
+                    type: 'image_error',
+                    itemIndex: result.index,
+                    error: result.error || 'Failed to generate image',
+                  });
+                }
+
+                send({
+                  type: 'progress',
                   stage: 'generating',
                   currentItem: completed,
                   totalItems: total,
                   message: `Generated ${completed} of ${total} images...`,
-                },
-              });
-
-              // Send result to client
-              if (result.success && result.data) {
-                send({
-                  type: 'image',
-                  itemIndex: result.index,
-                  imageBase64: result.data,
                 });
-              } else {
-                send({
-                  type: 'image_error',
-                  itemIndex: result.index,
-                  error: result.error || 'Failed to generate image',
-                });
-              }
+              },
+              onError: (index, error) => {
+                console.error(`Image generation failed for index ${index}:`, error);
+              },
+            }
+          );
+        } else {
+          send({
+            type: 'progress',
+            stage: 'complete',
+            message: `Menu parsed with ${totalItems} dishes. Generate images on-demand by clicking on individual dishes.`,
+          });
+        }
 
-              // Update overall progress
-              send({
-                type: 'progress',
-                stage: 'generating',
-                currentItem: completed,
-                totalItems: total,
-                message: `Generated ${completed} of ${total} images...`,
-              });
-            },
-            onError: (index, error) => {
-              console.error(`Image generation failed for index ${index}:`, error);
-            },
-          }
-        );
-
-        // Mark job as completed
         await updateJobState(jobId, {
           status: 'completed',
           progress: { stage: 'complete', message: 'Done! Your visual menu is ready.' },
@@ -315,10 +301,9 @@ export async function POST(request: NextRequest) {
 
         send({ type: 'complete', jobId });
       } catch (error) {
-        console.error('❌ API PROCESSING ERROR:', error);
+        console.error('API PROCESSING ERROR:', error);
         const errorMessage = error instanceof Error ? error.message : 'Processing failed';
 
-        // Provide user-friendly error messages
         let userMessage = errorMessage;
 
         if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('quota')) {
@@ -330,13 +315,11 @@ export async function POST(request: NextRequest) {
         } else if (errorMessage.includes('Failed to parse menu')) {
           userMessage = 'Failed to understand menu structure. Please ensure the image is clear and text is readable.';
         } else {
-          // Include error details for debugging
           userMessage = `Processing failed: ${errorMessage}. Please try again or contact support if the issue persists.`;
         }
 
         console.error('User-facing error message:', userMessage);
 
-        // Store error in job
         await updateJobState(jobId, {
           status: 'failed',
           error: userMessage,

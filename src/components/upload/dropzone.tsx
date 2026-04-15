@@ -59,11 +59,11 @@ export function Dropzone() {
         onDragLeave={() => setIsDragging(false)}
         onDrop={onDrop}
         className={`
-          border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-200 cursor-pointer
+          border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 cursor-pointer
           ${
             isDragging
-              ? 'border-orange-500 bg-orange-50'
-              : 'border-gray-300 hover:border-orange-400 hover:bg-orange-50/50'
+              ? 'border-indigo-500 bg-indigo-50'
+              : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
           }
         `}
       >
@@ -76,21 +76,21 @@ export function Dropzone() {
           id="file-upload"
         />
         <label htmlFor="file-upload" className="cursor-pointer block">
-          <div className="space-y-4">
-            <div className="text-6xl">
-              <span role="img" aria-label="camera">
-                📸
-              </span>
+          <div className="space-y-3">
+            <div className="w-14 h-14 rounded-xl bg-indigo-50 flex items-center justify-center mx-auto">
+              <svg className="w-7 h-7 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
             </div>
             <div>
-              <p className="text-xl font-semibold text-gray-700">
+              <p className="text-base font-semibold text-slate-700">
                 Drop up to {maxImages} menu photos here
               </p>
-              <p className="text-gray-500 mt-1">or click to browse (can select multiple)</p>
+              <p className="text-slate-400 text-sm mt-1">or click to browse</p>
             </div>
-            <p className="text-sm text-gray-400">Supports JPEG, PNG, WebP, HEIC (max 10MB each)</p>
+            <p className="text-xs text-slate-400">Supports JPEG, PNG, WebP, HEIC (max 10MB each)</p>
             {uploadedImages.length > 0 && (
-              <p className="text-sm text-orange-600 font-medium">
+              <p className="text-xs text-indigo-600 font-medium">
                 {uploadedImages.length} of {maxImages} images uploaded
               </p>
             )}
@@ -101,26 +101,28 @@ export function Dropzone() {
 
       {uploadedImages.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Uploaded Images:</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider">Uploaded Images</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {uploadedImages.map((image, index) => (
               <div key={image.id} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 bg-gray-50">
+                <div className="aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
                   <img
                     src={`data:${image.mimeType};base64,${image.base64}`}
                     alt={`Menu page ${index + 1}`}
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div className="absolute top-1 left-1 bg-orange-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                <div className="absolute top-1.5 left-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-md w-5 h-5 flex items-center justify-center">
                   {index + 1}
                 </div>
                 <button
                   onClick={() => removeUploadedImage(image.id)}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                  className="absolute top-1.5 right-1.5 bg-slate-900/70 text-white rounded-md w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
                   aria-label="Remove image"
                 >
-                  ×
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
             ))}

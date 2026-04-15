@@ -1,3 +1,5 @@
+export type ImageGenerationStatus = 'idle' | 'loading' | 'success' | 'error';
+
 export type DietaryLabel = 'vegan' | 'vegetarian' | 'gluten-free' | 'dairy-free' | 'nut-free';
 
 export interface MenuItem {
@@ -11,6 +13,7 @@ export interface MenuItem {
   translatedName?: string;
   translatedDescription?: string;
   generatedImageBase64?: string;
+  imageGenerationStatus?: ImageGenerationStatus;
   dietaryLabels?: DietaryLabel[];
 }
 

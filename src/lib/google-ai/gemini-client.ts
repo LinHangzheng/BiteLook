@@ -1,6 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ParsedMenu, MenuImage } from '@/types/menu';
-import { extractTextFromImage } from '@/lib/utils/ocr';
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_GENAI_API_KEY!,
@@ -77,24 +76,12 @@ export async function parseMenuImage(
 ): Promise<ParsedMenu> {
   let lastError: Error | null = null;
 
-  // Step 1: Extract raw text using OCR (with retry)
-  onProgress?.('Extracting text with OCR...');
-  let ocrText = '';
-  try {
-    ocrText = await extractTextFromImage(imageBase64, mimeType);
-    if (!ocrText) {
-      console.warn('⚠️  Text extraction returned empty, will proceed with image-only parsing');
-    }
-    onProgress?.('Analyzing menu structure...');
-  } catch (error) {
-    console.error('Text extraction error, will proceed with image-only parsing:', error);
-    onProgress?.('Analyzing menu with image...');
-  }
+  onProgress?.('Analyzing menu structure...');
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview', // Using Gemini 3 Flash preview
+        model: 'gemini-2.0-flash',
         contents: [
           {
             inlineData: {
@@ -105,16 +92,13 @@ export async function parseMenuImage(
           {
             text: `You are an expert at analyzing restaurant menu images with deep cultural and culinary knowledge.
 
-${ocrText ? `\n========== RAW TEXT EXTRACTED FROM IMAGE ==========\n${ocrText}\n===================================================\n\nIMPORTANT: Use this extracted text as your PRIMARY source for dish names, prices, and text content. The text above was extracted via OCR and represents the exact words on the menu. Cross-reference with the image to understand layout and structure.\n\n` : ''}
-
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-0. USE OCR TEXT AS PRIMARY SOURCE:
-   - The raw text above was extracted via OCR from the menu image
-   - Use this text as your PRIMARY source for exact dish names, prices, and descriptions
-   - The OCR text contains the EXACT words from the menu - copy them precisely
-   - Use the image for understanding layout, structure, and which text belongs to which dish
-   - If there's a discrepancy between what you see in the image and the OCR text, TRUST THE OCR TEXT
+0. READ TEXT DIRECTLY FROM THE IMAGE:
+   - Carefully read all text directly from the menu image
+   - Extract exact dish names, prices, and descriptions as they appear
+   - Pay close attention to the layout and structure of the menu
+   - If text is partially obscured, use context clues to infer complete names
 
 1. MENU STRUCTURE - VERY IMPORTANT:
    - First, identify if the menu has section headers or category labels (like "Appetizers", "Chef's Specials", "Signature Dishes", "Entrées", etc.)
@@ -259,11 +243,8 @@ export async function parseMultipleMenuImages(
   for (let i = 0; i < images.length; i++) {
     const image = images[i];
 
-    // Step 1: Extract raw text using OCR for this page
-    onProgress?.(`Extracting text from page ${i + 1}/${images.length}...`);
-    console.log(`Extracting text from page ${i + 1}/${images.length}...`);
-    const ocrText = await extractTextFromImage(image.base64, image.mimeType);
     onProgress?.(`Analyzing page ${i + 1}/${images.length}...`);
+    console.log(`Analyzing page ${i + 1}/${images.length}...`);
 
     // Build context info from previous pages
     const contextInfo = parsedPages.length > 0
@@ -274,7 +255,7 @@ export async function parseMultipleMenuImages(
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         contents: [
           {
             inlineData: {
@@ -285,16 +266,13 @@ export async function parseMultipleMenuImages(
           {
             text: `You are an expert at analyzing restaurant menu images with deep cultural and culinary knowledge.
 
-${ocrText ? `\n========== RAW TEXT EXTRACTED FROM IMAGE (PAGE ${i + 1}) ==========\n${ocrText}\n===================================================\n\nIMPORTANT: Use this extracted text as your PRIMARY source for dish names, prices, and text content. The text above was extracted via OCR and represents the exact words on the menu. Cross-reference with the image to understand layout and structure.\n\n` : ''}
-
 CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-0. USE OCR TEXT AS PRIMARY SOURCE:
-   - The raw text above was extracted via OCR from the menu image
-   - Use this text as your PRIMARY source for exact dish names, prices, and descriptions
-   - The OCR text contains the EXACT words from the menu - copy them precisely
-   - Use the image for understanding layout, structure, and which text belongs to which dish
-   - If there's a discrepancy between what you see in the image and the OCR text, TRUST THE OCR TEXT
+0. READ TEXT DIRECTLY FROM THE IMAGE:
+   - Carefully read all text directly from the menu image
+   - Extract exact dish names, prices, and descriptions as they appear
+   - Pay close attention to the layout and structure of the menu
+   - If text is partially obscured, use context clues to infer complete names
 
 1. MENU STRUCTURE - VERY IMPORTANT:
    - First, identify if the menu has section headers or category labels (like "Appetizers", "Chef's Specials", "Signature Dishes", "Entrées", etc.)
