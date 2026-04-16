@@ -7,6 +7,8 @@ import { useMenuStore } from '@/store/menu-store';
 import { useMenuProcessor } from '@/hooks/use-menu-processor';
 import { MenuContainer } from '@/components/menu/menu-container';
 import { FormatSelector } from '@/components/upload/format-selector';
+import { CategoryFilter } from '@/components/menu/category-filter';
+import { CartSummary } from '@/components/cart/cart-summary';
 
 export default function ResultPage() {
   const router = useRouter();
@@ -97,11 +99,14 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* Display mode toggle - show as soon as menu is parsed */}
+        {/* Display mode toggle and category filter - show as soon as menu is parsed */}
         {menuItems.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-sm font-medium text-gray-600 mb-3">Display Style</h2>
-            <FormatSelector />
+          <div className="mb-8 space-y-4">
+            <div>
+              <h2 className="text-sm font-medium text-gray-600 mb-3">Display Style</h2>
+              <FormatSelector />
+            </div>
+            <CategoryFilter />
           </div>
         )}
 
@@ -152,10 +157,14 @@ export default function ResultPage() {
         {/* Footer note */}
         {menuItems.length > 0 && (
           <div className="mt-8 text-center text-sm text-gray-500">
-            Images are AI-generated representations. Actual dishes may vary.
+            <p>Images are AI-generated representations. Actual dishes may vary.</p>
+            <p className="mt-1">Dietary labels are AI-inferred. Please verify with the restaurant.</p>
           </div>
         )}
       </div>
+
+      {/* Floating cart summary */}
+      <CartSummary />
     </main>
   );
 }

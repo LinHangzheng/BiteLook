@@ -1,18 +1,35 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 const COOKIE_KEY = 'bitelook_invite_code';
+const HEADER_KEY = 'X-Invite-Code';
 
 function getValidCodes(): string[] {
   const codes = process.env.INVITE_CODES || '';
   return codes.split(',').map((code) => code.trim().toUpperCase()).filter(Boolean);
 }
 
-export async function validateInviteCode(): Promise<boolean> {
+/**
+ * Get the invite code from cookie or header (for Capacitor native apps).
+ */
+export async function getInviteCode(): Promise<string | null> {
+  // First try to get from cookie
   const cookieStore = await cookies();
-  const inviteCode = cookieStore.get(COOKIE_KEY)?.value;
+  const cookieCode = cookieStore.get(COOKIE_KEY)?.value;
+  if (cookieCode) {
+    return cookieCode;
+  }
+
+  // Fall back to header (for Capacitor native apps)
+  const headerStore = await headers();
+  const headerCode = headerStore.get(HEADER_KEY);
+  return headerCode;
+}
+
+export async function validateInviteCode(): Promise<boolean> {
+  const inviteCode = await getInviteCode();
 
   if (!inviteCode) {
-    console.log('No invite code cookie found');
+    console.log('No invite code found in cookie or header');
     return false;
   }
 

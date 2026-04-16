@@ -1,10 +1,10 @@
 'use client';
 
-import { useMenuStore } from '@/store/menu-store';
+import { useMenuStore, useFilteredMenuItems } from '@/store/menu-store';
 import { DishCard } from './dish-card';
 
 export function FancyMenu() {
-  const menuItems = useMenuStore((state) => state.menuItems);
+  const menuItems = useFilteredMenuItems();
   const parsedMenu = useMenuStore((state) => state.parsedMenu);
 
   if (menuItems.length === 0) {

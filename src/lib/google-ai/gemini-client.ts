@@ -47,6 +47,14 @@ const menuSchema = {
             items: { type: 'string' },
             description: 'Key ingredients if visible or inferable from the dish name',
           },
+          dietaryLabels: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['vegan', 'vegetarian', 'gluten-free', 'dairy-free', 'nut-free'],
+            },
+            description: 'Dietary labels based on ingredients. vegan=no animal products, vegetarian=no meat/fish. Only include labels when confident based on visible ingredients.',
+          },
         },
         required: ['name', 'description'],
       },
@@ -162,6 +170,16 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
    - Keep price ranges (e.g., "$10-15")
    - Leave empty if not visible (don't guess)
    - Never include price in the dish name
+
+10. DIETARY LABELS:
+   - Analyze ingredients to infer dietary labels
+   - vegan: No animal products (no meat, fish, dairy, eggs, honey)
+   - vegetarian: No meat or fish (may include dairy, eggs)
+   - gluten-free: No wheat, barley, rye, or gluten-containing ingredients
+   - dairy-free: No milk, cheese, cream, butter, or dairy products
+   - nut-free: No tree nuts or peanuts
+   - Only include labels when confident based on visible/inferred ingredients
+   - When in doubt, omit the label rather than guess incorrectly
 
 Extract every dish with complete, accurate information, preserving the menu's original structure and categories.`,
           },
@@ -332,6 +350,16 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
    - Keep price ranges (e.g., "$10-15")
    - Leave empty if not visible (don't guess)
    - Never include price in the dish name
+
+10. DIETARY LABELS:
+   - Analyze ingredients to infer dietary labels
+   - vegan: No animal products (no meat, fish, dairy, eggs, honey)
+   - vegetarian: No meat or fish (may include dairy, eggs)
+   - gluten-free: No wheat, barley, rye, or gluten-containing ingredients
+   - dairy-free: No milk, cheese, cream, butter, or dairy products
+   - nut-free: No tree nuts or peanuts
+   - Only include labels when confident based on visible/inferred ingredients
+   - When in doubt, omit the label rather than guess incorrectly
 
 Extract every dish with complete, accurate information, preserving the menu's original structure and categories.${contextInfo}`,
           },

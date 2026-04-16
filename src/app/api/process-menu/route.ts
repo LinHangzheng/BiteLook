@@ -1,9 +1,63 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { kv } from '@vercel/kv';
+import { nanoid } from 'nanoid';
 import { parseMenuImage, parseMultipleMenuImages } from '@/lib/google-ai/gemini-client';
 import { generateDishImage } from '@/lib/google-ai/imagen-client';
-import { validateInviteCode } from '@/lib/validate-invite';
+import { validateInviteCode, getInviteCode } from '@/lib/validate-invite';
 import { processConcurrently } from '@/lib/utils/concurrency-limiter';
-import type { MenuImage } from '@/types/menu';
+import type { MenuImage, ProcessingProgress } from '@/types/menu';
+import type { JobData, GeneratedImageData } from '@/types/job';
+import { JOB_TTL_SECONDS } from '@/types/job';
+
+// CORS headers for Capacitor native app requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Invite-Code',
+};
+
+// Handle CORS preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
+async function updateJobState(
+  jobId: string,
+  updates: Partial<JobData>
+): Promise<void> {
+  try {
+    const job = await kv.get<JobData>(`job:${jobId}`);
+    if (!job) return;
+
+    const updatedJob: JobData = {
+      ...job,
+      ...updates,
+      updatedAt: Date.now(),
+    };
+
+    await kv.set(`job:${jobId}`, updatedJob, { ex: JOB_TTL_SECONDS });
+  } catch (error) {
+    console.error('Failed to update job state:', error);
+  }
+}
+
+async function storeGeneratedImage(
+  jobId: string,
+  itemIndex: number,
+  imageBase64: string | null,
+  error?: string
+): Promise<void> {
+  try {
+    const imageData: GeneratedImageData = { imageBase64, error };
+    await kv.set(
+      `job:${jobId}:images:${itemIndex}`,
+      imageData,
+      { ex: JOB_TTL_SECONDS }
+    );
+  } catch (err) {
+    console.error('Failed to store generated image:', err);
+  }
+}
 
 export async function POST(request: NextRequest) {
   // Validate invite code first
@@ -11,7 +65,7 @@ export async function POST(request: NextRequest) {
   if (!isValidated) {
     return new Response(JSON.stringify({ error: 'Unauthorized - Invalid or missing invite code' }), {
       status: 401,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }
 
@@ -36,20 +90,51 @@ export async function POST(request: NextRequest) {
     if (images.length === 0) {
       return new Response(JSON.stringify({ error: 'No images provided' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     }
     if (images.length > 5) {
       return new Response(JSON.stringify({ error: 'Maximum 5 images allowed' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     }
   } else {
     return new Response(JSON.stringify({ error: 'Missing image data. Please provide either imageBase64 or images array.' }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
+  }
+
+  // Generate unique job ID
+  const jobId = nanoid(12);
+
+  // Get invite code for job association (from cookie or header)
+  const inviteCode = await getInviteCode() || '';
+
+  // Initialize job in KV
+  const initialProgress: ProcessingProgress = {
+    stage: 'uploading',
+    message: 'Starting...',
+  };
+
+  const initialJob: JobData = {
+    id: jobId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    status: 'pending',
+    progress: initialProgress,
+    parsedMenu: null,
+    menuItems: [],
+    error: null,
+    inviteCode: inviteCode.toUpperCase(),
+  };
+
+  try {
+    await kv.set(`job:${jobId}`, initialJob, { ex: JOB_TTL_SECONDS });
+  } catch (error) {
+    console.error('Failed to create job in KV:', error);
+    // Continue without job persistence - still works for connected clients
   }
 
   const encoder = new TextEncoder();
@@ -60,8 +145,16 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
       };
 
+      // Send job ID immediately so client can poll if disconnected
+      send({ type: 'job_created', jobId });
+
       try {
-        // Step 1: Extract text and parse menu (single or multiple images)
+        // Update status to parsing
+        await updateJobState(jobId, {
+          status: 'parsing',
+          progress: { stage: 'parsing', message: 'Starting menu analysis...' },
+        });
+
         send({
           type: 'progress',
           stage: 'parsing',
@@ -69,7 +162,10 @@ export async function POST(request: NextRequest) {
         });
 
         // Progress callback to send real-time updates
-        const onParsingProgress = (message: string) => {
+        const onParsingProgress = async (message: string) => {
+          await updateJobState(jobId, {
+            progress: { stage: 'parsing', message },
+          });
           send({
             type: 'progress',
             stage: 'parsing',
@@ -88,6 +184,23 @@ export async function POST(request: NextRequest) {
         console.log(`Dishes: ${parsedMenu.items.map(item => item.name).join(', ')}`);
         console.log(`===========================================\n`);
 
+        // Build menu items from parsed menu
+        const menuItems = parsedMenu.items.map((item, i) => ({
+          ...item,
+          id: `dish-${i}`,
+        }));
+
+        // Update job with parsed menu
+        await updateJobState(jobId, {
+          status: 'generating',
+          parsedMenu,
+          menuItems,
+          progress: {
+            stage: 'parsing',
+            message: `Found ${parsedMenu.items.length} dishes! Preparing to generate images...`,
+          },
+        });
+
         send({
           type: 'progress',
           stage: 'parsing',
@@ -102,6 +215,15 @@ export async function POST(request: NextRequest) {
         // Step 2: Generate images for each dish (in parallel with concurrency limit)
         const totalItems = parsedMenu.items.length;
 
+        await updateJobState(jobId, {
+          progress: {
+            stage: 'generating',
+            currentItem: 0,
+            totalItems,
+            message: `Generating images for ${totalItems} dishes (3 at a time)...`,
+          },
+        });
+
         send({
           type: 'progress',
           stage: 'generating',
@@ -112,7 +234,7 @@ export async function POST(request: NextRequest) {
 
         await processConcurrently(
           parsedMenu.items,
-          async (item, index) => {
+          async (item) => {
             const dishName = item.translatedName || item.name;
 
             try {
@@ -130,7 +252,25 @@ export async function POST(request: NextRequest) {
           },
           {
             concurrency: 3, // Only 3 concurrent requests for optimal performance
-            onProgress: (completed, total, result) => {
+            onProgress: async (completed, total, result) => {
+              // Store image in KV
+              await storeGeneratedImage(
+                jobId,
+                result.index,
+                result.success ? result.data || null : null,
+                result.success ? undefined : result.error
+              );
+
+              // Update job progress
+              await updateJobState(jobId, {
+                progress: {
+                  stage: 'generating',
+                  currentItem: completed,
+                  totalItems: total,
+                  message: `Generated ${completed} of ${total} images...`,
+                },
+              });
+
               // Send result to client
               if (result.success && result.data) {
                 send({
@@ -161,13 +301,19 @@ export async function POST(request: NextRequest) {
           }
         );
 
+        // Mark job as completed
+        await updateJobState(jobId, {
+          status: 'completed',
+          progress: { stage: 'complete', message: 'Done! Your visual menu is ready.' },
+        });
+
         send({
           type: 'progress',
           stage: 'complete',
           message: 'Done! Your visual menu is ready.',
         });
 
-        send({ type: 'complete' });
+        send({ type: 'complete', jobId });
       } catch (error) {
         console.error('❌ API PROCESSING ERROR:', error);
         const errorMessage = error instanceof Error ? error.message : 'Processing failed';
@@ -190,9 +336,17 @@ export async function POST(request: NextRequest) {
 
         console.error('User-facing error message:', userMessage);
 
+        // Store error in job
+        await updateJobState(jobId, {
+          status: 'failed',
+          error: userMessage,
+          progress: { stage: 'error', message: userMessage },
+        });
+
         send({
           type: 'error',
           message: userMessage,
+          jobId,
         });
       } finally {
         controller.close();
@@ -205,6 +359,7 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
+      ...corsHeaders,
     },
   });
 }

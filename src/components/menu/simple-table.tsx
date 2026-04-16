@@ -1,10 +1,12 @@
 'use client';
 
-import { useMenuStore } from '@/store/menu-store';
+import { useFilteredMenuItems } from '@/store/menu-store';
 import { DishImage } from './dish-image';
+import { DietaryBadges } from './dietary-badges';
+import { AddToCartButton } from './add-to-cart-button';
 
 export function SimpleTable() {
-  const menuItems = useMenuStore((state) => state.menuItems);
+  const menuItems = useFilteredMenuItems();
 
   if (menuItems.length === 0) {
     return null;
@@ -20,7 +22,9 @@ export function SimpleTable() {
             <th className="text-left p-4 font-semibold text-gray-700 hidden md:table-cell">
               Description
             </th>
+            <th className="text-left p-4 font-semibold text-gray-700 hidden sm:table-cell">Diet</th>
             <th className="text-left p-4 font-semibold text-gray-700">Price</th>
+            <th className="text-left p-4 font-semibold text-gray-700">Order</th>
           </tr>
         </thead>
         <tbody>
@@ -37,6 +41,9 @@ export function SimpleTable() {
                 <p className="text-sm text-gray-500 md:hidden mt-1 line-clamp-2">
                   {item.translatedDescription || item.description}
                 </p>
+                <div className="sm:hidden mt-1">
+                  <DietaryBadges labels={item.dietaryLabels} compact />
+                </div>
               </td>
               <td className="p-4 text-sm text-gray-600 hidden md:table-cell max-w-md">
                 <p className="line-clamp-3">{item.translatedDescription || item.description}</p>
@@ -46,7 +53,13 @@ export function SimpleTable() {
                   </p>
                 )}
               </td>
+              <td className="p-4 hidden sm:table-cell">
+                <DietaryBadges labels={item.dietaryLabels} compact />
+              </td>
               <td className="p-4 font-medium text-gray-800">{item.price || '-'}</td>
+              <td className="p-4">
+                <AddToCartButton menuItemId={item.id} compact />
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,3 +1,5 @@
+export type DietaryLabel = 'vegan' | 'vegetarian' | 'gluten-free' | 'dairy-free' | 'nut-free';
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -9,6 +11,12 @@ export interface MenuItem {
   translatedName?: string;
   translatedDescription?: string;
   generatedImageBase64?: string;
+  dietaryLabels?: DietaryLabel[];
+}
+
+export interface CartItem {
+  menuItemId: string;
+  quantity: number;
 }
 
 export interface ParsedMenu {
