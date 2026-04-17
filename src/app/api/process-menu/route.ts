@@ -314,6 +314,8 @@ export async function POST(request: NextRequest) {
           userMessage = 'Request timed out. Your menu image might be too complex or large. Try a smaller image or fewer pages.';
         } else if (errorMessage.includes('Failed to parse menu')) {
           userMessage = 'Failed to understand menu structure. Please ensure the image is clear and text is readable.';
+        } else if (errorMessage.includes('Unexpected end of JSON') || errorMessage.includes('JSON')) {
+          userMessage = 'Your menu has too many dishes to process in a single image. Try uploading the menu as multiple pages (one section per photo).';
         } else {
           userMessage = `Processing failed: ${errorMessage}. Please try again or contact support if the issue persists.`;
         }

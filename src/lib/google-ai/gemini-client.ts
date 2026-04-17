@@ -66,6 +66,67 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const MAX_OUTPUT_TOKENS = 8192;
+
+/**
+ * Parse JSON response, recovering partial items if the response was truncated
+ * due to hitting the model's output token limit. Returns the parsed menu with
+ * whatever complete dish items could be recovered.
+ */
+function parseMenuResponseWithRecovery(text: string): ParsedMenu {
+  try {
+    return JSON.parse(text) as ParsedMenu;
+  } catch (parseError) {
+    console.warn('⚠️  JSON parse failed, attempting recovery from truncated response');
+
+    // Try to recover by truncating to the last complete item in the items array.
+    // Find the items array start, then walk backward from end to find the last "}," or "}]"
+    const itemsMatch = text.match(/"items"\s*:\s*\[/);
+    if (!itemsMatch) throw parseError;
+
+    const itemsStart = itemsMatch.index! + itemsMatch[0].length;
+    // Find the last complete item by looking for the last "}," (item separator)
+    let lastCompleteIdx = -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = itemsStart; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) lastCompleteIdx = i;
+      } else if (ch === ']' && depth === 0) {
+        lastCompleteIdx = i - 1;
+        break;
+      }
+    }
+
+    if (lastCompleteIdx === -1) throw parseError;
+
+    // Extract originalLanguage if present
+    const langMatch = text.match(/"originalLanguage"\s*:\s*"([^"]*)"/);
+    const originalLanguage = langMatch ? langMatch[1] : 'Unknown';
+
+    // Build recovered JSON
+    const recoveredItems = text.substring(itemsStart, lastCompleteIdx + 1);
+    const recoveredJson = `{"originalLanguage":"${originalLanguage}","items":[${recoveredItems}]}`;
+
+    try {
+      const recovered = JSON.parse(recoveredJson) as ParsedMenu;
+      console.warn(`⚠️  Recovered ${recovered.items.length} complete dishes from truncated response`);
+      return recovered;
+    } catch {
+      throw parseError;
+    }
+  }
+}
+
 type ProgressCallback = (message: string) => void;
 
 export async function parseMenuImage(
@@ -171,6 +232,7 @@ Extract every dish with complete, accurate information, preserving the menu's or
         config: {
           responseMimeType: 'application/json',
           responseSchema: menuSchema,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
         },
       });
 
@@ -179,7 +241,7 @@ Extract every dish with complete, accurate information, preserving the menu's or
         throw new Error('No response from Gemini');
       }
 
-      const parsedMenu = JSON.parse(text) as ParsedMenu;
+      const parsedMenu = parseMenuResponseWithRecovery(text);
 
       // DEBUG: Log what the LLM extracted
       console.log('\n========== LLM MENU EXTRACTION DEBUG ==========');
@@ -345,6 +407,7 @@ Extract every dish with complete, accurate information, preserving the menu's or
         config: {
           responseMimeType: 'application/json',
           responseSchema: menuSchema,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
         },
       });
 
@@ -353,7 +416,7 @@ Extract every dish with complete, accurate information, preserving the menu's or
         throw new Error('No response from Gemini');
       }
 
-      const parsedPage = JSON.parse(text) as ParsedMenu;
+      const parsedPage = parseMenuResponseWithRecovery(text);
 
       // DEBUG: Log what was extracted from this page
       console.log(`\n========== PAGE ${i + 1} EXTRACTION DEBUG ==========`);
