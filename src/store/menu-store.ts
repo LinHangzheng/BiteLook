@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { MenuItem, ParsedMenu, DisplayMode, ProcessingProgress, MenuImage, CartItem } from '@/types/menu';
+import { apiUrl } from '@/lib/api-config';
+import { getAuthHeaders, storage } from '@/lib/storage';
 
 interface MenuState {
   // Auth state
@@ -144,9 +146,10 @@ export const useMenuStore = create<MenuState>((set, get) => ({
     }));
 
     try {
-      const response = await fetch('/api/generate-image', {
+      const headers = await getAuthHeaders();
+      const response = await fetch(apiUrl('/api/generate-image'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           dishName: item.translatedName || item.name,
           description: item.translatedDescription || item.description,
@@ -220,9 +223,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('bitelook_current_job_id');
-      import('js-cookie').then((Cookies) => {
-        Cookies.default.remove('bitelook_invite_code');
-      });
+      storage.removeInviteCode();
     }
     set({
       inviteCode: null,

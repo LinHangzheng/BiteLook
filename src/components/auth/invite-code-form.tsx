@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Cookies from 'js-cookie';
 import { useMenuStore } from '@/store/menu-store';
-
-const COOKIE_KEY = 'bitelook_invite_code';
+import { storage } from '@/lib/storage';
+import { apiUrl } from '@/lib/api-config';
 
 export function InviteCodeForm() {
   const [code, setCode] = useState('');
@@ -14,14 +13,14 @@ export function InviteCodeForm() {
 
   const { setInviteCode, setIsValidated } = useMenuStore();
 
-  // Check for stored invite code on mount
   useEffect(() => {
-    const storedCode = Cookies.get(COOKIE_KEY);
-    if (storedCode) {
-      validateCode(storedCode, true);
-    } else {
-      setIsCheckingStored(false);
-    }
+    storage.getInviteCode().then((storedCode) => {
+      if (storedCode) {
+        validateCode(storedCode, true);
+      } else {
+        setIsCheckingStored(false);
+      }
+    });
   }, []);
 
   const validateCode = async (codeToValidate: string, isStoredCode = false) => {
@@ -29,7 +28,7 @@ export function InviteCodeForm() {
     setError(null);
 
     try {
-      const response = await fetch('/api/validate-code', {
+      const response = await fetch(apiUrl('/api/validate-code'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: codeToValidate }),
@@ -38,15 +37,12 @@ export function InviteCodeForm() {
       const data = await response.json();
 
       if (data.valid) {
-        Cookies.set(COOKIE_KEY, codeToValidate.toUpperCase(), {
-          expires: 30,
-          sameSite: 'lax'
-        });
+        await storage.setInviteCode(codeToValidate.toUpperCase());
         setInviteCode(codeToValidate.toUpperCase());
         setIsValidated(true);
       } else {
         if (isStoredCode) {
-          Cookies.remove(COOKIE_KEY);
+          await storage.removeInviteCode();
         }
 
         if (response.status === 503) {

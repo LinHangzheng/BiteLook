@@ -3,14 +3,20 @@
 import { useCallback, useState } from 'react';
 import { useUpload } from '@/hooks/use-upload';
 import { useMenuStore } from '@/store/menu-store';
+import { useNativeCamera } from '@/hooks/use-native-camera';
+import { isNativeApp } from '@/lib/api-config';
 
 export function Dropzone() {
   const { handleFile, handleFiles } = useUpload();
   const uploadedImages = useMenuStore((state) => state.uploadedImages);
   const maxImages = useMenuStore((state) => state.maxImages);
   const removeUploadedImage = useMenuStore((state) => state.removeUploadedImage);
+  const addUploadedImage = useMenuStore((state) => state.addUploadedImage);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { promptForPhoto, pickMultipleFromGallery } = useNativeCamera();
+  const isNative = isNativeApp();
 
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
@@ -49,8 +55,69 @@ export function Dropzone() {
     [handleFile, handleFiles]
   );
 
+  const handleTakePhoto = useCallback(async () => {
+    setError(null);
+    if (uploadedImages.length >= maxImages) {
+      setError(`Maximum ${maxImages} images allowed.`);
+      return;
+    }
+    try {
+      const result = await promptForPhoto();
+      if (result) {
+        addUploadedImage(result.base64, result.mimeType);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to capture photo');
+    }
+  }, [promptForPhoto, addUploadedImage, uploadedImages.length, maxImages]);
+
+  const handlePickFromGallery = useCallback(async () => {
+    setError(null);
+    const remaining = maxImages - uploadedImages.length;
+    if (remaining <= 0) {
+      setError(`Maximum ${maxImages} images allowed.`);
+      return;
+    }
+    try {
+      const results = await pickMultipleFromGallery(remaining);
+      for (const img of results) {
+        addUploadedImage(img.base64, img.mimeType);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to pick photos');
+    }
+  }, [pickMultipleFromGallery, addUploadedImage, uploadedImages.length, maxImages]);
+
   return (
     <div className="space-y-6">
+      {/* Native camera buttons (iOS/Android) */}
+      {isNative && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleTakePhoto}
+            disabled={uploadedImages.length >= maxImages}
+            className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-sm transition-all hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+            </svg>
+            Take Photo
+          </button>
+          <button
+            onClick={handlePickFromGallery}
+            disabled={uploadedImages.length >= maxImages}
+            className="flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-semibold text-sm transition-all hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+            </svg>
+            From Gallery
+          </button>
+        </div>
+      )}
+
+      {/* Standard drag & drop / file input */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -84,9 +151,9 @@ export function Dropzone() {
             </div>
             <div>
               <p className="text-base font-semibold text-slate-700">
-                Drop up to {maxImages} menu photos here
+                {isNative ? 'Or browse files' : `Drop up to ${maxImages} menu photos here`}
               </p>
-              <p className="text-slate-400 text-sm mt-1">or click to browse</p>
+              {!isNative && <p className="text-slate-400 text-sm mt-1">or click to browse</p>}
             </div>
             <p className="text-xs text-slate-400">Supports JPEG, PNG, WebP, HEIC (max 10MB each)</p>
             {uploadedImages.length > 0 && (
