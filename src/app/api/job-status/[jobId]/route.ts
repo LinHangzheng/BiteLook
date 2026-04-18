@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
-import { getInviteCode } from '@/lib/validate-invite';
+import { validateSession } from '@/lib/validate-session';
+import { corsHeaders } from '@/lib/cors';
 import type { JobData, GeneratedImageData } from '@/types/job';
 
-// CORS headers for Capacitor native app requests
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Invite-Code',
-};
-
-// Handle CORS preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
@@ -25,17 +18,14 @@ export async function GET(
 ) {
   const { jobId } = await params;
 
-  // Get invite code from cookie or header (for Capacitor native apps)
-  const inviteCode = await getInviteCode();
-
-  if (!inviteCode) {
+  const session = await validateSession();
+  if (!session) {
     return NextResponse.json(
-      { error: 'Unauthorized - Missing invite code' },
+      { error: 'Unauthorized - Invalid or expired session' },
       { status: 401, headers: corsHeaders }
     );
   }
 
-  // Fetch job from KV
   let job: JobData | null = null;
   try {
     job = await kv.get<JobData>(`job:${jobId}`);
@@ -55,14 +45,19 @@ export async function GET(
   }
 
   // Verify job belongs to this user
-  if (job.inviteCode !== inviteCode.toUpperCase()) {
+  // Migration fallback: old jobs have inviteCode instead of userId
+  const jobOwner = job.userId || (job as JobData & { inviteCode?: string }).inviteCode;
+  const isOwner = job.userId
+    ? job.userId === session.userId
+    : jobOwner === session.inviteCode;
+
+  if (!isOwner) {
     return NextResponse.json(
       { error: 'Unauthorized - Job belongs to different user' },
       { status: 403, headers: corsHeaders }
     );
   }
 
-  // Build response
   const response: {
     jobId: string;
     status: string;
@@ -81,7 +76,6 @@ export async function GET(
     error: job.error,
   };
 
-  // If we have a parsed menu, fetch all generated images
   if (job.parsedMenu && job.parsedMenu.items.length > 0) {
     try {
       const imagePromises = job.parsedMenu.items.map(async (_, index) => {
@@ -98,7 +92,6 @@ export async function GET(
       response.generatedImages = await Promise.all(imagePromises);
     } catch (error) {
       console.error('Failed to fetch generated images:', error);
-      // Continue without images - job status is still useful
     }
   }
 

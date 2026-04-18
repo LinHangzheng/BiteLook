@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
   },
   server: {
     // Allow loading from the deployed backend for API calls
-    allowNavigation: ['bitelook.vercel.app'],
+    allowNavigation: ['menu-lyart-tau.vercel.app'],
   },
 };
 

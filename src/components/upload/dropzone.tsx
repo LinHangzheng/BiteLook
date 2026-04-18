@@ -5,6 +5,7 @@ import { useUpload } from '@/hooks/use-upload';
 import { useMenuStore } from '@/store/menu-store';
 import { useNativeCamera } from '@/hooks/use-native-camera';
 import { isNativeApp } from '@/lib/api-config';
+import { resizeImage } from '@/lib/image-utils';
 
 export function Dropzone() {
   const { handleFile, handleFiles } = useUpload();
@@ -64,7 +65,8 @@ export function Dropzone() {
     try {
       const result = await promptForPhoto();
       if (result) {
-        addUploadedImage(result.base64, result.mimeType);
+        const resized = await resizeImage(result.base64, result.mimeType);
+        addUploadedImage(resized.base64, resized.mimeType);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to capture photo');
@@ -81,7 +83,8 @@ export function Dropzone() {
     try {
       const results = await pickMultipleFromGallery(remaining);
       for (const img of results) {
-        addUploadedImage(img.base64, img.mimeType);
+        const resized = await resizeImage(img.base64, img.mimeType);
+        addUploadedImage(resized.base64, resized.mimeType);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to pick photos');

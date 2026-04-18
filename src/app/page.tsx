@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Cookies from 'js-cookie';
 import { useMenuStore } from '@/store/menu-store';
+import { storage } from '@/lib/storage';
 import { Dropzone } from '@/components/upload/dropzone';
 import { FormatSelector } from '@/components/upload/format-selector';
 import { InviteCodeForm } from '@/components/auth/invite-code-form';
@@ -14,11 +14,12 @@ export default function HomePage() {
   const [hasCookie, setHasCookie] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
-  // Double-check: verify both Zustand state AND cookie presence
+  // Double-check: verify both Zustand state AND stored session token
   useEffect(() => {
-    const cookieExists = !!Cookies.get('bitelook_invite_code');
-    setHasCookie(cookieExists);
-    setIsChecking(false);
+    storage.getSessionToken().then((token) => {
+      setHasCookie(!!token);
+      setIsChecking(false);
+    });
   }, [isValidated]);
 
   // Show loading while checking

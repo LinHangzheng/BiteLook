@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDishImage } from '@/lib/google-ai/imagen-client';
-import { validateInviteCode } from '@/lib/validate-invite';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Invite-Code',
-};
+import { validateSession } from '@/lib/validate-session';
+import { corsHeaders } from '@/lib/cors';
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 export async function POST(request: NextRequest) {
-  const isValidated = await validateInviteCode();
-  if (!isValidated) {
+  const session = await validateSession();
+  if (!session) {
     return NextResponse.json(
-      { error: 'Unauthorized - Invalid or missing invite code' },
+      { error: 'Unauthorized - Invalid or expired session' },
       { status: 401, headers: corsHeaders }
     );
   }

@@ -20,7 +20,7 @@ fi
 
 # Run the static build
 echo "Building static export..."
-CAPACITOR_BUILD=true NEXT_PUBLIC_API_BASE_URL=https://bitelook.vercel.app npx next build
+CAPACITOR_BUILD=true NEXT_PUBLIC_API_BASE_URL=https://menu-lyart-tau.vercel.app npx next build
 
 # Restore API routes
 if [ -d ".api-backup/api" ]; then

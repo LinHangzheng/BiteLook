@@ -11,7 +11,7 @@ export interface JobData {
   parsedMenu: ParsedMenu | null;
   menuItems: MenuItem[];
   error: string | null;
-  inviteCode: string;
+  userId: string;
 }
 
 export interface GeneratedImageData {

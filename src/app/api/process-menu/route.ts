@@ -3,17 +3,13 @@ import { kv } from '@vercel/kv';
 import { nanoid } from 'nanoid';
 import { parseMenuImage, parseMultipleMenuImages } from '@/lib/google-ai/gemini-client';
 import { generateDishImage } from '@/lib/google-ai/imagen-client';
-import { validateInviteCode, getInviteCode } from '@/lib/validate-invite';
+import { validateSession } from '@/lib/validate-session';
 import { processConcurrently } from '@/lib/utils/concurrency-limiter';
 import type { MenuImage, ProcessingProgress } from '@/types/menu';
 import type { JobData, GeneratedImageData } from '@/types/job';
 import { JOB_TTL_SECONDS } from '@/types/job';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Invite-Code',
-};
+import { corsHeaders } from '@/lib/cors';
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
@@ -60,9 +56,9 @@ async function storeGeneratedImage(
 const IMAGE_GENERATION_THRESHOLD = 10;
 
 export async function POST(request: NextRequest) {
-  const isValidated = await validateInviteCode();
-  if (!isValidated) {
-    return new Response(JSON.stringify({ error: 'Unauthorized - Invalid or missing invite code' }), {
+  const session = await validateSession();
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized - Invalid or expired session' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
@@ -102,7 +98,6 @@ export async function POST(request: NextRequest) {
   }
 
   const jobId = nanoid(12);
-  const inviteCode = await getInviteCode() || '';
 
   const initialProgress: ProcessingProgress = {
     stage: 'uploading',
@@ -118,7 +113,7 @@ export async function POST(request: NextRequest) {
     parsedMenu: null,
     menuItems: [],
     error: null,
-    inviteCode: inviteCode.toUpperCase(),
+    userId: session.userId,
   };
 
   try {

@@ -11,19 +11,47 @@ export function InviteCodeForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingStored, setIsCheckingStored] = useState(true);
 
-  const { setInviteCode, setIsValidated } = useMenuStore();
+  const { setSessionToken, setIsValidated } = useMenuStore();
 
   useEffect(() => {
-    storage.getInviteCode().then((storedCode) => {
-      if (storedCode) {
-        validateCode(storedCode, true);
+    storage.getSessionToken().then((storedToken) => {
+      if (storedToken) {
+        verifySession(storedToken);
       } else {
         setIsCheckingStored(false);
       }
     });
   }, []);
 
-  const validateCode = async (codeToValidate: string, isStoredCode = false) => {
+  const verifySession = async (token: string) => {
+    setIsLoading(true);
+    try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'X-Session-Token': token,
+      };
+      const response = await fetch(apiUrl('/api/session'), { headers });
+      const data = await response.json();
+
+      if (data.valid) {
+        setSessionToken(token);
+        setIsValidated(true);
+      } else {
+        await storage.removeSessionToken();
+        setIsCheckingStored(false);
+      }
+    } catch {
+      await storage.removeSessionToken();
+      setIsCheckingStored(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim()) return;
+
     setIsLoading(true);
     setError(null);
 
@@ -31,39 +59,28 @@ export function InviteCodeForm() {
       const response = await fetch(apiUrl('/api/validate-code'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: codeToValidate }),
+        body: JSON.stringify({ code: code.trim() }),
       });
 
       const data = await response.json();
 
-      if (data.valid) {
-        await storage.setInviteCode(codeToValidate.toUpperCase());
-        setInviteCode(codeToValidate.toUpperCase());
+      if (data.valid && data.sessionToken) {
+        await storage.setSessionToken(data.sessionToken);
+        setSessionToken(data.sessionToken);
         setIsValidated(true);
       } else {
-        if (isStoredCode) {
-          await storage.removeInviteCode();
-        }
-
-        if (response.status === 503) {
+        if (response.status === 429) {
+          setError('Too many attempts. Please wait a minute.');
+        } else if (response.status === 503) {
           setError('System not configured. Please contact the administrator.');
         } else {
           setError(data.error || 'Invalid invite code');
         }
-        setIsCheckingStored(false);
       }
     } catch {
       setError('Failed to validate code. Please try again.');
-      setIsCheckingStored(false);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (code.trim()) {
-      validateCode(code.trim());
     }
   };
 

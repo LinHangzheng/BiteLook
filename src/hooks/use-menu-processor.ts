@@ -247,6 +247,7 @@ export function useMenuProcessor() {
       if (
         errorName === 'AbortError' ||
         errorMessage.includes('Failed to fetch') ||
+        errorMessage.includes('Load failed') ||
         errorMessage.includes('NetworkError') ||
         errorMessage.includes('network') ||
         errorMessage.includes('The operation was aborted')
@@ -270,7 +271,7 @@ export function useMenuProcessor() {
       // Provide user-friendly error messages
       let userMessage = errorMessage;
 
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Load failed') || errorMessage.includes('NetworkError')) {
         userMessage = 'Network error. Please check your connection and try again.';
       } else if (errorMessage.includes('timeout')) {
         userMessage = 'Request timed out. The menu image might be too large. Try a smaller image or try again.';

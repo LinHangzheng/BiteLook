@@ -5,7 +5,7 @@ import { getAuthHeaders, storage } from '@/lib/storage';
 
 interface MenuState {
   // Auth state
-  inviteCode: string | null;
+  sessionToken: string | null;
   isValidated: boolean;
 
   // Upload state
@@ -35,7 +35,7 @@ interface MenuState {
   cart: CartItem[];
 
   // Actions
-  setInviteCode: (code: string) => void;
+  setSessionToken: (token: string) => void;
   setIsValidated: (validated: boolean) => void;
   addUploadedImage: (image: string, mimeType: string) => void;
   removeUploadedImage: (id: string) => void;
@@ -61,7 +61,7 @@ interface MenuState {
 }
 
 export const useMenuStore = create<MenuState>((set, get) => ({
-  inviteCode: null,
+  sessionToken: null,
   isValidated: false,
   uploadedImages: [],
   maxImages: 5,
@@ -76,7 +76,7 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   selectedCategory: null,
   cart: [],
 
-  setInviteCode: (code) => set({ inviteCode: code }),
+  setSessionToken: (token) => set({ sessionToken: token }),
 
   setIsValidated: (validated) => set({ isValidated: validated }),
 
@@ -223,10 +223,10 @@ export const useMenuStore = create<MenuState>((set, get) => ({
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('bitelook_current_job_id');
-      storage.removeInviteCode();
+      storage.removeSessionToken();
     }
     set({
-      inviteCode: null,
+      sessionToken: null,
       isValidated: false,
       uploadedImages: [],
       isProcessing: false,

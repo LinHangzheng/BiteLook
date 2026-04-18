@@ -9,7 +9,7 @@ export function getApiBaseUrl(): string {
   // Check if running in native Capacitor environment
   if (Capacitor.isNativePlatform()) {
     // In native app, use the deployed Vercel backend
-    return process.env.NEXT_PUBLIC_API_BASE_URL || 'https://bitelook.vercel.app';
+    return process.env.NEXT_PUBLIC_API_BASE_URL || 'https://menu-lyart-tau.vercel.app';
   }
 
   // In web browser, use relative paths
