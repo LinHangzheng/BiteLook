@@ -155,7 +155,7 @@ export function Dropzone() {
               </p>
               {!isNative && <p className="text-slate-400 text-sm mt-1">or click to browse</p>}
             </div>
-            <p className="text-xs text-slate-400">Supports JPEG, PNG, WebP, HEIC (max 10MB each)</p>
+            <p className="text-xs text-slate-400">Supports JPEG, PNG, WebP, HEIC</p>
             {uploadedImages.length > 0 && (
               <p className="text-xs text-indigo-600 font-medium">
                 {uploadedImages.length} of {maxImages} images uploaded
